@@ -6,78 +6,151 @@ import jwt from 'jsonwebtoken';
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET!;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
+
+const ACCESS_TOKEN_EXPIRES_IN = '15m';
+const REFRESH_TOKEN_EXPIRES_IN_DAYS = 30;
+
 export const register = async (req: Request, res: Response) => {
-  const { username, email, password } = req.body;
+  const { email, password } = req.body as { email?: string; password?: string };
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
 
   try {
-    const password_hash = await bcrypt.hash(password, 10);
-    const user = await prisma.users.create({
+    const existing = await prisma.authUser.findUnique({ where: { email } });
+    if (existing) {
+      return res.status(409).json({ error: 'Email is already registered' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await prisma.authUser.create({
       data: {
-        username,
         email,
-        password_hash,
+        passwordHash,
+        status: 'ACTIVE',
       },
     });
-    res.status(201).json({ user_id: user.user_id, username, email });
+
+    return res.status(201).json({
+      id: user.id,
+      email: user.email,
+      emailVerified: user.emailVerified,
+      status: user.status,
+      createdAt: user.createdAt,
+    });
   } catch (error) {
     console.error('Error registering user:', error);
-    res.status(500).json({ error: `Failed to register ${error}` });
+    return res.status(500).json({ error: 'Failed to register user' });
   }
 };
 
 export const login = async (req: Request, res: Response) => {
-  const { email, password } = req.body;
+  const { email, password } = req.body as { email?: string; password?: string };
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
 
   try {
-    const user = await prisma.users.findUnique({ where: { email } });
+    const user = await prisma.authUser.findUnique({ where: { email } });
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+    if (user.status !== 'ACTIVE') {
+      return res.status(403).json({ error: 'User is not active' });
+    }
+
+    const isValidPassword = await bcrypt.compare(password, user.passwordHash);
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const accessToken = jwt.sign({ user_id: user.user_id }, JWT_SECRET, { expiresIn: '1h' });
-    const refreshToken = jwt.sign(
-      { user_id: user.user_id },
-      JWT_REFRESH_SECRET,
-      { expiresIn: '30d' }
+    const accessToken = jwt.sign(
+      { userId: user.id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
     );
-    res.cookie('rt', refreshToken, {
-      httpOnly: true, secure: true, sameSite: 'lax',
-      path: '/api/auth/refresh', maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
-    res.status(200).json({ accessToken, user_id: user.user_id, username: user.username });
 
+    const refreshToken = jwt.sign(
+      { userId: user.id },
+      JWT_REFRESH_SECRET,
+      { expiresIn: `${REFRESH_TOKEN_EXPIRES_IN_DAYS}d` },
+    );
+
+    const refreshExpiresAt = new Date();
+    refreshExpiresAt.setDate(refreshExpiresAt.getDate() + REFRESH_TOKEN_EXPIRES_IN_DAYS);
+
+    await prisma.refreshToken.create({
+      data: {
+        token: refreshToken,
+        userId: user.id,
+        expiresAt: refreshExpiresAt,
+      },
+    });
+
+    res.cookie('rt', refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/refresh',
+      maxAge: REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000,
+    });
+
+    return res.status(200).json({
+      accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        status: user.status,
+      },
+    });
   } catch (error) {
     console.error('Error logging in:', error);
-    res.status(500).json({ error: 'Failed to login' });
+    return res.status(500).json({ error: 'Failed to login' });
   }
 };
 
-export const refreshToken = (req: Request, res: Response) => {
+export const refreshToken = async (req: Request, res: Response) => {
   try {
-    const refreshToken = req.cookies?.rt;
-    if (!refreshToken) {
+    const tokenFromCookie: string | undefined = req.cookies?.rt;
+    if (!tokenFromCookie) {
       return res.status(401).json({ error: 'No refresh token provided' });
     }
 
-    jwt.verify(refreshToken, JWT_REFRESH_SECRET, (err: any, decoded: any) => {
-      if (err) {
-        return res.status(403).json({ error: 'Invalid refresh token' });
-      }
-
-      const newAccessToken = jwt.sign(
-        { user_id: decoded.user_id },
-        JWT_SECRET,
-        { expiresIn: '15m' }
-      );
-
-      return res.status(200).json({ token: newAccessToken });
+    const stored = await prisma.refreshToken.findUnique({
+      where: { token: tokenFromCookie },
+      include: { user: true },
     });
 
+    if (!stored || stored.revoked || stored.expiresAt < new Date()) {
+      return res.status(401).json({ error: 'Refresh token is invalid or expired' });
+    }
+
+    let payload: any;
+    try {
+      payload = jwt.verify(tokenFromCookie, JWT_REFRESH_SECRET);
+    } catch {
+      return res.status(403).json({ error: 'Invalid refresh token' });
+    }
+
+    if (!payload || !payload.userId || payload.userId !== stored.userId) {
+      return res.status(403).json({ error: 'Invalid refresh token payload' });
+    }
+
+    if (stored.user.status !== 'ACTIVE') {
+      return res.status(403).json({ error: 'User is not active' });
+    }
+
+    const newAccessToken = jwt.sign(
+      { userId: stored.user.id, email: stored.user.email },
+      JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
+    );
+
+    return res.status(200).json({ accessToken: newAccessToken });
   } catch (error) {
     console.error('Error refreshing token:', error);
     return res.status(500).json({ error: 'Failed to refresh token' });

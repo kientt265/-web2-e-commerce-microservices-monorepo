@@ -12,12 +12,14 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@auth-db:5432/auth_db?schema=public
       - PRISMA_CLIENT_ENGINE_TYPE=binary
       - PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+      # set true if you want to seed on container start
+      - PRISMA_SEED=false
     depends_on:
       - auth-db
     volumes:
       - ./back/auth-service:/app
       - /app/node_modules
-    command: sh -c "npm install && npm run dev"
+    command: npm run dev
     networks:
       - app-network
 

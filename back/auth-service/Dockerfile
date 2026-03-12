@@ -21,4 +21,5 @@ RUN npx prisma generate --schema prisma/schema.prisma
 
 EXPOSE 3001
 
+ENTRYPOINT ["sh", "./docker/entrypoint.sh"]
 CMD ["npm", "run", "dev"]
