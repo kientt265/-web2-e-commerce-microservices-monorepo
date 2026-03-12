@@ -1,17 +1,18 @@
 import express from 'express';
-import { config } from 'dotenv';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/authRoutes';
+import dotenv from "dotenv";
+import cookieParser from 'cookie-parser';
 
-config();
+dotenv.config();
 
 const prisma = new PrismaClient();
 const app = express();
 const port = process.env.AUTH_PORT || 3001;
-
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 app.use('/', authRoutes);
 app.get('/run', (req, res) => {
   res.send('Auth Service is running');
