@@ -10,7 +10,19 @@ dotenv.config();
 const prisma = new PrismaClient();
 const app = express();
 const port = process.env.AUTH_PORT || 3001;
-app.use(cors());
+
+const allowedOrigins =
+  process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean) ??
+  ['http://localhost:5173'];
+
+const corsOptions: cors.CorsOptions = {
+  origin: allowedOrigins,
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
 app.use(express.json());
 app.use(cookieParser());
 app.use('/', authRoutes);

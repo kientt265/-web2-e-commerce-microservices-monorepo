@@ -9,6 +9,7 @@ const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
 
 const ACCESS_TOKEN_EXPIRES_IN = '15m';
 const REFRESH_TOKEN_EXPIRES_IN_DAYS = 30;
+const IS_PROD = process.env.NODE_ENV === 'production';
 
 export const register = async (req: Request, res: Response) => {
   const { email, password } = req.body as { email?: string; password?: string };
@@ -92,7 +93,7 @@ export const login = async (req: Request, res: Response) => {
 
     res.cookie('rt', refreshToken, {
       httpOnly: true,
-      secure: true,
+      secure: IS_PROD,
       sameSite: 'lax',
       path: '/refresh',
       maxAge: REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000,

@@ -1,4 +1,4 @@
-import { PrismaClient, UserStatus } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -19,13 +19,13 @@ async function main() {
         email: 'user1@example.com',
         passwordHash,
         emailVerified: true,
-        status: UserStatus.ACTIVE,
+        status: 'ACTIVE',
       },
       {
         email: 'user2@example.com',
         passwordHash,
         emailVerified: false,
-        status: UserStatus.SUSPENDED,
+        status: 'SUSPENDED',
       },
     ],
   });
