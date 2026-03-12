@@ -4,7 +4,7 @@ services:
       context: ./back/auth-service
       dockerfile: Dockerfile
     env_file:
-      - .env
+      - ./back/auth-service/.env
     ports:
       - "3001:3001"
     environment:
@@ -23,6 +23,29 @@ services:
     networks:
       - app-network
 
+  product-service:
+    build:
+      context: ./back/product-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./back/product-service/.env
+    ports:
+      - "3002:3001"
+    environment:
+      - PRODUCT_PORT=3002
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@product-db:5432/product_db?schema=public
+      - PRISMA_CLIENT_ENGINE_TYPE=binary
+      - PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+      - PRISMA_SEED=false
+    depends_on:
+      - product-db
+    volumes:
+      - ./back/product-service:/app
+      - /app/node_modules
+    command: npm run dev
+    networks:
+      - app-network
+
   auth-db:
     image: postgres:15
     environment:
@@ -36,8 +59,22 @@ services:
     networks:
       - app-network
 
+  product-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=product_db
+    volumes:
+      - product-db-data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    networks:
+      - app-network
+
 volumes: 
   auth-db-data:
+  product-db-data:
 
 networks:
   app-network:
