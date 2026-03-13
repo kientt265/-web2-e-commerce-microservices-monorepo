@@ -32,7 +32,7 @@ services:
     ports:
       - "3002:3001"
     environment:
-      - PRODUCT_PORT=3002
+      - PRODUCT_PORT=3001
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@product-db:5432/product_db?schema=public
       - PRISMA_CLIENT_ENGINE_TYPE=binary
       - PRISMA_CLI_QUERY_ENGINE_TYPE=binary
@@ -46,8 +46,36 @@ services:
     networks:
       - app-network
 
+  order-service:
+    build:
+      context: ./back/order-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./back/order-service/.env
+    ports: 
+      - "3003:3001"
+    environment:
+      - ORDER_PORT=3001
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@order-db:5432/order_db?schema=public
+      - PRISMA_CLIENT_ENGINE_TYPE=binary
+      - PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+      - PRISMA_SEED=false
+    depends_on:
+      - order-db
+    volumes:
+      - ./back/order-service:/app
+      - /app/node_modules
+    command: npm run dev
+    networks:
+      - app-network
+
   auth-db:
     image: postgres:15
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -61,6 +89,11 @@ services:
 
   product-db:
     image: postgres:15
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -72,9 +105,28 @@ services:
     networks:
       - app-network
 
+  order-db:
+    image: postgres:15
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=order_db
+    volumes:
+      - order-db-data:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+    networks:
+      - app-network
+
 volumes: 
   auth-db-data:
   product-db-data:
+  order-db-data:
 
 networks:
   app-network:
