@@ -69,6 +69,98 @@ services:
     networks:
       - app-network
 
+  cart-service:
+    build:
+      context: ./back/cart-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./back/cart-service/.env
+    ports: 
+      - "3004:3001"
+    environment:
+      - CART_PORT=3001
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@cart-db:5432/cart_db?schema=public
+      - PRISMA_CLIENT_ENGINE_TYPE=binary
+      - PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+      - PRISMA_SEED=false
+    depends_on:
+      - cart-db
+    volumes:
+      - ./back/cart-service:/app
+      - /app/node_modules
+    command: npm run dev
+    networks:
+      - app-network
+
+  inventory-service:
+    build:
+      context: ./back/inventory-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./back/inventory-service/.env
+    ports: 
+      - "3005:3001"
+    environment:
+      - INVENTORY_PORT=3001
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@inventory-db:5432/inventory_db?schema=public
+      - PRISMA_CLIENT_ENGINE_TYPE=binary
+      - PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+      - PRISMA_SEED=false
+    depends_on:
+      - inventory-db
+    volumes:
+      - ./back/inventory-service:/app
+      - /app/node_modules
+    command: npm run dev
+    networks:
+      - app-network
+
+  delivery-service:
+    build:
+      context: ./back/delivery-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./back/delivery-service/.env
+    ports: 
+      - "3006:3001"
+    environment:
+      - DELIVERY_PORT=3001
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@delivery-db:5432/delivery_db?schema=public
+      - PRISMA_CLIENT_ENGINE_TYPE=binary
+      - PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+      - PRISMA_SEED=false
+    depends_on:
+      - delivery-db
+    volumes:
+      - ./back/delivery-service:/app
+      - /app/node_modules
+    command: npm run dev
+    networks:
+      - app-network
+
+  rating-service:
+    build:
+      context: ./back/rating-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./back/rating-service/.env
+    ports: 
+      - "3007:3001"
+    environment:
+      - RATING_PORT=3001
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@rating-db:5432/rating_db?schema=public
+      - PRISMA_CLIENT_ENGINE_TYPE=binary
+      - PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+      - PRISMA_SEED=false
+    depends_on:
+      - rating-db
+    volumes:
+      - ./back/rating-service:/app
+      - /app/node_modules
+    command: npm run dev
+    networks:
+      - app-network
+
   auth-db:
     image: postgres:15
     healthcheck:
@@ -123,10 +215,87 @@ services:
     networks:
       - app-network
 
+  cart-db:
+    image: postgres:15
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=cart_db
+    volumes:
+      - cart-db-data:/var/lib/postgresql/data
+    ports:
+      - "5437:5432"
+    networks:
+      - app-network
+
+  inventory-db:
+    image: postgres:15
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=inventory_db
+    volumes:
+      - inventory-db-data:/var/lib/postgresql/data
+    ports:
+      - "5438:5432"
+    networks:
+      - app-network
+
+  delivery-db:
+    image: postgres:15
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=delivery_db
+    volumes:
+      - delivery-db-data:/var/lib/postgresql/data
+    ports:
+      - "5439:5432"
+    networks:
+      - app-network
+
+  rating-db:
+    image: postgres:15
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=rating_db
+    volumes:
+      - rating-db-data:/var/lib/postgresql/data
+    ports:
+      - "5440:5432"
+    networks:
+      - app-network
+
+
 volumes: 
   auth-db-data:
   product-db-data:
   order-db-data:
+  cart-db-data:
+  inventory-db-data:
+  delivery-db-data:
+  rating-db-data:
 
 networks:
   app-network:
