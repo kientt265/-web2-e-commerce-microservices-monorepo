@@ -1,8 +1,10 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import './App.css';
 
 const AUTH_API_BASE =
   (import.meta as any).env?.VITE_AUTH_API_URL || 'http://localhost:3001';
+const PRODUCT_API_BASE =
+  (import.meta as any).env?.VITE_PRODUCT_API_URL || 'http://localhost:3002';
 
 type AuthUser = {
   id: string;
@@ -16,15 +18,73 @@ type LoginResponse = {
   user: AuthUser;
 };
 
+async function readJsonSafe(res: Response): Promise<any> {
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) return await res.json();
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
+type Category = {
+  id: number;
+  name: string;
+  description?: string | null;
+};
+
+type Product = {
+  id: number;
+  name: string;
+  description?: string | null;
+  price: string; // Prisma Decimal serialized
+  images: string[];
+  stock: number;
+  category_id?: number | null;
+  categories?: Category | null;
+};
+
+type CartItem = {
+  productId: number;
+  name: string;
+  price: number;
+  image?: string;
+  qty: number;
+  stock: number;
+};
+
+function formatMoney(n: number) {
+  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+}
+
 function App() {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  // Auth (optional)
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [showAuth, setShowAuth] = useState(false);
   const [email, setEmail] = useState('user1@example.com');
   const [password, setPassword] = useState('password123');
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Shop state
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [shopLoading, setShopLoading] = useState(false);
+  const [shopError, setShopError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | 'all'>('all');
+  const [sort, setSort] = useState<'newest' | 'price_asc' | 'price_desc'>('newest');
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  // Cart (local only)
+  const [cartOpen, setCartOpen] = useState(false);
+  const [cart, setCart] = useState<Record<number, CartItem>>({});
+  const [logs, setLogs] = useState<string[]>([]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem('auth_access_token');
@@ -33,11 +93,40 @@ function App() {
     }
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setShopLoading(true);
+      setShopError(null);
+      try {
+        const [catRes, prodRes] = await Promise.all([
+          fetch(`${PRODUCT_API_BASE}/categories`),
+          fetch(`${PRODUCT_API_BASE}/products?limit=24&sort=newest`),
+        ]);
+        const catJson = await readJsonSafe(catRes);
+        const prodJson = await readJsonSafe(prodRes);
+
+        if (!catRes.ok) throw new Error(catJson?.error || 'Failed to load categories');
+        if (!prodRes.ok) throw new Error(prodJson?.error || 'Failed to load products');
+        if (cancelled) return;
+        setCategories(Array.isArray(catJson?.items) ? catJson.items : []);
+        setProducts(Array.isArray(prodJson?.items) ? prodJson.items : []);
+      } catch (err: any) {
+        if (!cancelled) setShopError(err?.message || 'Failed to load shop data');
+      } finally {
+        if (!cancelled) setShopLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setMessage(null);
-    setError(null);
+    setAuthLoading(true);
+    setAuthError(null);
 
     try {
       const res = await fetch(`${AUTH_API_BASE}/register`, {
@@ -47,27 +136,26 @@ function App() {
         credentials: 'include',
       });
 
-      const data = await res.json();
+      const data = await readJsonSafe(res);
       if (!res.ok) {
-        setError(data?.error || 'Register failed');
+        setAuthError(data?.error || 'Register failed');
         return;
       }
 
-      setMessage('Registered successfully. You can now log in.');
-      setMode('login');
+      setAuthMode('login');
+      setLogs((prev) => [`[auth] Registered successfully, please login`, ...prev].slice(0, 20));
     } catch (err) {
       console.error(err);
-      setError('Network error while registering');
+      setAuthError('Network error while registering');
     } finally {
-      setLoading(false);
+      setAuthLoading(false);
     }
   };
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setMessage(null);
-    setError(null);
+    setAuthLoading(true);
+    setAuthError(null);
 
     try {
       const res = await fetch(`${AUTH_API_BASE}/login`, {
@@ -77,46 +165,22 @@ function App() {
         credentials: 'include',
       });
 
-      const data: LoginResponse | { error?: string } = await res.json();
+      const data: LoginResponse | { error?: string } = await readJsonSafe(res);
       if (!res.ok || !('accessToken' in data)) {
-        setError((data as any)?.error || 'Login failed');
+        setAuthError((data as any)?.error || 'Login failed');
         return;
       }
 
       setAccessToken(data.accessToken);
       window.localStorage.setItem('auth_access_token', data.accessToken);
       setCurrentUser(data.user);
-      setMessage('Logged in successfully');
+      setShowAuth(false);
+      setLogs((prev) => [`[auth] Logged in as ${data.user.email}`, ...prev].slice(0, 20));
     } catch (err) {
       console.error(err);
-      setError('Network error while logging in');
+      setAuthError('Network error while logging in');
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRefresh = async () => {
-    setLoading(true);
-    setMessage(null);
-    setError(null);
-    try {
-      const res = await fetch(`${AUTH_API_BASE}/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.accessToken) {
-        setError(data?.error || 'Refresh failed');
-        return;
-      }
-      setAccessToken(data.accessToken);
-      window.localStorage.setItem('auth_access_token', data.accessToken);
-      setMessage('Access token refreshed');
-    } catch (err) {
-      console.error(err);
-      setError('Network error while refreshing token');
-    } finally {
-      setLoading(false);
+      setAuthLoading(false);
     }
   };
 
@@ -124,119 +188,444 @@ function App() {
     setAccessToken(null);
     setCurrentUser(null);
     window.localStorage.removeItem('auth_access_token');
-    setMessage('Logged out locally (refresh token cookie still exists)');
+    setLogs((prev) => [`[auth] Logged out (local token cleared)`, ...prev].slice(0, 20));
+  };
+
+  const logNotReady = (service: string) => {
+    const msg = `[${service}] chưa chuẩn bị xong API`;
+    console.log(msg);
+    setLogs((prev) => [msg, ...prev].slice(0, 20));
+  };
+
+  const cartCount = useMemo(
+    () => Object.values(cart).reduce((sum, it) => sum + it.qty, 0),
+    [cart],
+  );
+  const cartTotal = useMemo(
+    () => Object.values(cart).reduce((sum, it) => sum + it.qty * it.price, 0),
+    [cart],
+  );
+
+  const filteredProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return products
+      .filter((p) => {
+        if (selectedCategoryId !== 'all' && (p.category_id ?? null) !== selectedCategoryId) return false;
+        if (inStockOnly && p.stock <= 0) return false;
+        if (!q) return true;
+        return (
+          p.name.toLowerCase().includes(q) ||
+          (p.description ?? '').toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => {
+        const ap = Number(a.price);
+        const bp = Number(b.price);
+        if (sort === 'price_asc') return ap - bp;
+        if (sort === 'price_desc') return bp - ap;
+        return b.id - a.id;
+      });
+  }, [products, search, selectedCategoryId, inStockOnly, sort]);
+
+  const addToCart = (p: Product) => {
+    if (p.stock <= 0) return;
+    setCart((prev) => {
+      const existing = prev[p.id];
+      const nextQty = Math.min((existing?.qty ?? 0) + 1, p.stock);
+      return {
+        ...prev,
+        [p.id]: {
+          productId: p.id,
+          name: p.name,
+          price: Number(p.price),
+          image: p.images?.[0],
+          qty: nextQty,
+          stock: p.stock,
+        },
+      };
+    });
+    setLogs((prev) => [`[cart] Added: ${p.name}`, ...prev].slice(0, 20));
+  };
+
+  const setQty = (productId: number, qty: number) => {
+    setCart((prev) => {
+      const it = prev[productId];
+      if (!it) return prev;
+      const next = Math.max(1, Math.min(qty, it.stock));
+      return { ...prev, [productId]: { ...it, qty: next } };
+    });
+  };
+
+  const removeFromCart = (productId: number) => {
+    setCart((prev) => {
+      const { [productId]: _, ...rest } = prev;
+      return rest;
+    });
   };
 
   return (
-    <div className="auth-page">
-      <header className="auth-header">
-        <h1>Auth Service Demo</h1>
-        <p>Testing register / login / refresh against your auth-service API</p>
-        <p className="auth-api-url">
-          API base: <code>{AUTH_API_BASE}</code>
-        </p>
+    <div className="shop-page">
+      <header className="topbar">
+        <div className="brand">
+          <div className="logo">M</div>
+          <div>
+            <div className="brand-name">MikeyMart</div>
+            <div className="brand-sub">Sàn thương mại điện tử (demo)</div>
+          </div>
+        </div>
+
+        <div className="search">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Tìm kiếm sản phẩm..."
+          />
+        </div>
+
+        <div className="top-actions">
+          <button type="button" className="ghost" onClick={() => logNotReady('order-service')}>
+            Orders
+          </button>
+          <button type="button" className="ghost" onClick={() => logNotReady('inventory-service')}>
+            Inventory
+          </button>
+          <button type="button" className="ghost" onClick={() => logNotReady('delivery-service')}>
+            Delivery
+          </button>
+          <button type="button" className="ghost" onClick={() => logNotReady('rating-service')}>
+            Ratings
+          </button>
+
+          {currentUser ? (
+            <button type="button" className="ghost" onClick={handleLogout} title={currentUser.email}>
+              {currentUser.email}
+            </button>
+          ) : (
+            <button type="button" className="ghost" onClick={() => setShowAuth(true)}>
+              Đăng nhập / Đăng ký
+            </button>
+          )}
+
+          <button type="button" className="cart-btn" onClick={() => setCartOpen(true)}>
+            Cart <span className="badge">{cartCount}</span>
+          </button>
+        </div>
       </header>
 
-      <main className="auth-main">
-        <section className="auth-card">
-          <div className="auth-tabs">
-            <button
-              type="button"
-              className={mode === 'login' ? 'active' : ''}
-              onClick={() => setMode('login')}
-            >
-              Login
-            </button>
-            <button
-              type="button"
-              className={mode === 'register' ? 'active' : ''}
-              onClick={() => setMode('register')}
-            >
-              Register
-            </button>
+      <div className="content">
+        <aside className="sidebar">
+          <div className="side-card">
+            <div className="side-title">Danh mục</div>
+            <div className="side-list">
+              <button
+                type="button"
+                className={selectedCategoryId === 'all' ? 'active' : ''}
+                onClick={() => setSelectedCategoryId('all')}
+              >
+                Tất cả
+              </button>
+              {categories.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={selectedCategoryId === c.id ? 'active' : ''}
+                  onClick={() => setSelectedCategoryId(c.id)}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <form
-            onSubmit={mode === 'login' ? handleLogin : handleRegister}
-            className="auth-form"
-          >
-            <label>
-              <span>Email</span>
+          <div className="side-card">
+            <div className="side-title">Bộ lọc</div>
+            <label className="check">
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
+                type="checkbox"
+                checked={inStockOnly}
+                onChange={(e) => setInStockOnly(e.target.checked)}
               />
+              <span>Còn hàng</span>
+            </label>
+            <label className="field">
+              <span>Sắp xếp</span>
+              <select value={sort} onChange={(e) => setSort(e.target.value as any)}>
+                <option value="newest">Mới nhất</option>
+                <option value="price_asc">Giá tăng</option>
+                <option value="price_desc">Giá giảm</option>
+              </select>
             </label>
 
-            <label>
-              <span>Password</span>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-              />
-            </label>
+            <div className="side-meta">
+              <div className="muted small">Auth API: <code>{AUTH_API_BASE}</code></div>
+              <div className="muted small">Product API: <code>{PRODUCT_API_BASE}</code></div>
+              <div className="muted small">
+                Swagger: <a href={`${PRODUCT_API_BASE}/docs`} target="_blank" rel="noreferrer">/docs</a>
+              </div>
+            </div>
+          </div>
 
-            <button type="submit" disabled={loading}>
-              {loading
-                ? 'Working...'
-                : mode === 'login'
-                  ? 'Login'
-                  : 'Register'}
-            </button>
-          </form>
+          <div className="side-card">
+            <div className="side-title">Logs</div>
+            <div className="logs">
+              {logs.length === 0 ? (
+                <div className="muted small">Chưa có logs.</div>
+              ) : (
+                logs.map((l, idx) => (
+                  <div key={idx} className="log-line">{l}</div>
+                ))
+              )}
+            </div>
+          </div>
+        </aside>
 
-          <div className="auth-actions">
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={loading}
-            >
-              Refresh access token (using cookie)
-            </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={loading}
-            >
-              Logout (clear access token)
+        <main className="main">
+          <div className="hero">
+            <div>
+              <div className="hero-title">Khám phá sản phẩm</div>
+              <div className="hero-sub">
+                Xem sản phẩm không cần đăng nhập. Đăng nhập chỉ cần khi đặt hàng (chưa handle).
+              </div>
+            </div>
+            <button type="button" className="primary" onClick={() => logNotReady('order-service')}>
+              Mua ngay (chưa handle)
             </button>
           </div>
 
-          {message && <div className="auth-message success">{message}</div>}
-          {error && <div className="auth-message error">{error}</div>}
-        </section>
+          {shopError ? (
+            <div className="notice error">{shopError}</div>
+          ) : null}
 
-        <section className="auth-status">
-          <h2>Current session</h2>
-          <div className="auth-status-block">
-            <h3>Access token</h3>
-            {accessToken ? (
-              <code className="token-preview">
-                {accessToken.substring(0, 40)}...
-              </code>
-            ) : (
-              <p>No access token stored</p>
-            )}
-          </div>
+          {shopLoading ? (
+            <div className="grid">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className="card skeleton" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid">
+              {filteredProducts.map((p) => {
+                const img = p.images?.[0];
+                const price = Number(p.price);
+                return (
+                  <div key={p.id} className="product-card">
+                    <button type="button" className="product-media" onClick={() => setSelectedProduct(p)}>
+                      {img ? (
+                        <img src={img} alt={p.name} loading="lazy" />
+                      ) : (
+                        <div className="placeholder">No image</div>
+                      )}
+                    </button>
+                    <div className="product-body">
+                      <div className="product-name" title={p.name}>{p.name}</div>
+                      <div className="product-meta">
+                        <span className="price">{formatMoney(price)}</span>
+                        <span className={p.stock > 0 ? 'stock ok' : 'stock out'}>
+                          {p.stock > 0 ? `Còn ${p.stock}` : 'Hết hàng'}
+                        </span>
+                      </div>
+                      <div className="product-actions">
+                        <button type="button" className="ghost" onClick={() => setSelectedProduct(p)}>
+                          Xem
+                        </button>
+                        <button
+                          type="button"
+                          className="primary"
+                          disabled={p.stock <= 0}
+                          onClick={() => addToCart(p)}
+                        >
+                          Thêm vào giỏ
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
 
-          <div className="auth-status-block">
-            <h3>User</h3>
-            {currentUser ? (
-              <pre className="user-json">
-{JSON.stringify(currentUser, null, 2)}
-              </pre>
-            ) : (
-              <p>No user loaded (login to see basic profile)</p>
-            )}
+              {!shopLoading && filteredProducts.length === 0 ? (
+                <div className="empty">
+                  Không có sản phẩm phù hợp.
+                </div>
+              ) : null}
+            </div>
+          )}
+        </main>
+      </div>
+
+      {selectedProduct ? (
+        <div className="modal-backdrop" onMouseDown={() => setSelectedProduct(null)}>
+          <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <div className="modal-title">{selectedProduct.name}</div>
+                <div className="muted small">
+                  {selectedProduct.categories?.name
+                    ? `Category: ${selectedProduct.categories.name}`
+                    : selectedProduct.category_id
+                      ? `Category ID: ${selectedProduct.category_id}`
+                      : 'Uncategorized'}
+                </div>
+              </div>
+              <button type="button" className="x" onClick={() => setSelectedProduct(null)}>
+                ✕
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="modal-media">
+                {selectedProduct.images?.[0] ? (
+                  <img src={selectedProduct.images[0]} alt={selectedProduct.name} />
+                ) : (
+                  <div className="placeholder big">No image</div>
+                )}
+              </div>
+              <div className="modal-info">
+                <div className="price big">{formatMoney(Number(selectedProduct.price))}</div>
+                <div className={selectedProduct.stock > 0 ? 'stock ok' : 'stock out'}>
+                  {selectedProduct.stock > 0 ? `Còn ${selectedProduct.stock}` : 'Hết hàng'}
+                </div>
+                <p className="desc">{selectedProduct.description || 'Không có mô tả.'}</p>
+                <div className="modal-actions">
+                  <button type="button" className="ghost" onClick={() => logNotReady('rating-service')}>
+                    Xem đánh giá (chưa handle)
+                  </button>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={selectedProduct.stock <= 0}
+                    onClick={() => addToCart(selectedProduct)}
+                  >
+                    Thêm vào giỏ
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-        </section>
-      </main>
+        </div>
+      ) : null}
+
+      {cartOpen ? (
+        <div className="modal-backdrop" onMouseDown={() => setCartOpen(false)}>
+          <div className="modal wide" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-title">Giỏ hàng</div>
+              <button type="button" className="x" onClick={() => setCartOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="cart">
+              {Object.values(cart).length === 0 ? (
+                <div className="muted">Giỏ hàng trống.</div>
+              ) : (
+                <>
+                  <div className="cart-list">
+                    {Object.values(cart).map((it) => (
+                      <div key={it.productId} className="cart-item">
+                        <div className="cart-img">
+                          {it.image ? <img src={it.image} alt={it.name} /> : <div className="placeholder">No image</div>}
+                        </div>
+                        <div className="cart-info">
+                          <div className="cart-name">{it.name}</div>
+                          <div className="muted small">{formatMoney(it.price)} / item</div>
+                          <div className="qty">
+                            <button type="button" className="ghost" onClick={() => setQty(it.productId, it.qty - 1)}>
+                              −
+                            </button>
+                            <div className="qty-n">{it.qty}</div>
+                            <button type="button" className="ghost" onClick={() => setQty(it.productId, it.qty + 1)}>
+                              +
+                            </button>
+                            <button type="button" className="danger" onClick={() => removeFromCart(it.productId)}>
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                        <div className="cart-price">{formatMoney(it.qty * it.price)}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="cart-footer">
+                    <div className="cart-total">
+                      <div className="muted small">Tổng cộng</div>
+                      <div className="price big">{formatMoney(cartTotal)}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => logNotReady('order-service')}
+                    >
+                      Checkout (chưa handle)
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showAuth ? (
+        <div className="modal-backdrop" onMouseDown={() => setShowAuth(false)}>
+          <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-title">{authMode === 'login' ? 'Đăng nhập' : 'Đăng ký'}</div>
+              <button type="button" className="x" onClick={() => setShowAuth(false)}>
+                ✕
+              </button>
+            </div>
+
+            <div className="tabs">
+              <button
+                type="button"
+                className={authMode === 'login' ? 'active' : ''}
+                onClick={() => setAuthMode('login')}
+              >
+                Login
+              </button>
+              <button
+                type="button"
+                className={authMode === 'register' ? 'active' : ''}
+                onClick={() => setAuthMode('register')}
+              >
+                Register
+              </button>
+            </div>
+
+            <form onSubmit={authMode === 'login' ? handleLogin : handleRegister} className="auth-form">
+              <label className="field">
+                <span>Email</span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                />
+              </label>
+              <label className="field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                />
+              </label>
+
+              {authError ? <div className="notice error">{authError}</div> : null}
+
+              <button type="submit" className="primary" disabled={authLoading}>
+                {authLoading ? 'Working...' : authMode === 'login' ? 'Login' : 'Register'}
+              </button>
+              {accessToken ? (
+                <div className="muted small">
+                  Token đã lưu localStorage. (Refresh token cookie được set bởi auth-service)
+                </div>
+              ) : null}
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
