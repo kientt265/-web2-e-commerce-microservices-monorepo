@@ -110,8 +110,12 @@ services:
       - PRISMA_CLIENT_ENGINE_TYPE=binary
       - PRISMA_CLI_QUERY_ENGINE_TYPE=binary
       - PRISMA_SEED=false
+      - KAFKA_BROKER_1=kafka-1:9092
+      - KAFKA_BROKER_2=kafka-2:9092
     depends_on:
       - inventory-db
+      - kafka-1
+      - kafka-2
     volumes:
       - ./back/inventory-service:/app
       - /app/node_modules
