@@ -1,21 +1,24 @@
 import { Router } from 'express';
-import { authMiddleware } from '../middleware/auth';
-import { tempCartController, persistentCartController } from '../controllers/cartControllers';
+import {
+  addItemToCart,
+  clearCart,
+  getOrCreateCartByUserId,
+  listCartItems,
+  removeItemFromCart,
+  updateCartItem,
+} from '../controllers/cartController';
 
 const router = Router();
 
-// Temporary cart routes (no auth required)
+router.get('/health', (_req, res) => res.status(200).json({ ok: true, service: 'cart-service' }));
 
-router.post('/temp/add', tempCartController.addToCart);
-router.delete('/temp/remove', tempCartController.removeFromCart);
-router.get('/temp', tempCartController.getCartItems);
-
-// Persistent cart routes (auth required)
-router.use('/user', authMiddleware);
-router.post('/user/cart', persistentCartController.createCart);
-router.post('/user/cart/add', persistentCartController.addToCart);
-router.delete('/user/cart/remove', persistentCartController.removeFromCart);
-router.get('/user/cart/:userId', persistentCartController.getCart);
-router.delete('/user/cart/:userId/clear', persistentCartController.clearCart);
+// Cart by user
+router.get('/carts/:userId', getOrCreateCartByUserId);
+router.get('/carts/:userId/items', listCartItems);
+router.post('/carts/:userId/items', addItemToCart);
+router.put('/carts/:userId/items/:itemId', updateCartItem);
+router.delete('/carts/:userId/items/:itemId', removeItemFromCart);
+router.delete('/carts/:userId/items', clearCart);
 
 export default router;
+

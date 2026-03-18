@@ -1,0 +1,483 @@
+services:
+  auth-service:
+    build:
+      context: ./back/auth-service
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - AUTH_PORT=3001
+      - AUTH_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@auth-db:5432/auth_db?schema=public
+    depends_on:
+      - auth-db
+    volumes:
+      - ./back/auth-service:/app
+    networks:
+      - app-network
+
+  order-service:
+    build:
+      context: ./back/order-service
+      dockerfile: Dockerfile
+    ports:
+      - "3005:3005"
+    environment:
+      - ORDER_PORT=3005
+      - ORDER_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@order-db:5432/order_db?schema=public
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - order-db
+      - kafka
+    volumes:
+      - ./back/order-service:/app
+    networks:
+      - app-network
+
+  chat-service:
+    build:
+      context: ./back/chat-service
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      - CHAT_PORT=3002
+      - CHAT_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@chat-db:5432/chat_db?schema=public
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - chat-db
+      - kafka
+    volumes:
+      - ./back/chat-service:/app
+    networks:
+      - app-network
+
+  product-service:
+    build:
+      context: ./back/product-service
+      dockerfile: Dockerfile
+    ports:
+      - "3003:3003"
+    environment:
+      - PRODUCT_PORT=3003
+      - PRODUCT_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@product-db:5432/product_db?schema=public
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - product-db
+      - elasticsearch
+      - kafka
+    volumes:
+      - ./back/product-service:/app
+    networks:
+      - app-network
+
+  cart-service:
+    build:
+      context: ./back/cart-service
+      dockerfile: Dockerfile
+    ports:
+      - "3004:3004"
+    environment:
+      - CART_PORT=3004
+      - CART_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@cart-db:5432/cart_db?schema=public
+    depends_on:
+      - cart-db
+      - redis 
+    volumes:
+      - ./back/cart-service:/app
+    networks:
+      - app-network
+
+  payment-service:
+    build:
+      context: ./back/payment-service
+      dockerfile: Dockerfile
+    ports:
+      - "3006:3006"
+    environment:
+      - PAYMENT_PORT=3006
+      - PAYMENT_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@payment-db:5432/payment_db?schema=public
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - payment-db
+      - kafka
+    volumes:
+      - ./back/payment-service:/app
+    networks:
+      - app-network
+
+  mail-service:
+    build:
+      context: ./back/mail-service
+      dockerfile: Dockerfile
+    ports:
+    - "3007:3007"
+    environment:
+    - MAIL_PORT=3007
+    - MAIL_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@mail-db:5432/mail_db?schema=public
+    - KAFKA_BROKER=kafka:9092
+    depends_on:
+    - mail-db
+    - kafka
+    volumes:
+    - ./back/mail-service:/app
+    networks:
+    - app-network
+
+  auth-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=auth_db
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  chat-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=chat_db
+    volumes:
+      - chat-db-data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    networks:
+      - app-network
+
+  product-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=product_db
+    volumes:
+      - product-db-data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d product_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  cart-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=cart_db
+    volumes:
+      - cart-db-data:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d cart_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+  
+  order-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=order_db
+    volumes:
+      - order-db-data:/var/lib/postgresql/data
+    ports:
+      - "5437:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d order_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  payment-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=payment_db
+    volumes:
+      - payment-db-data:/var/lib/postgresql/data
+    ports:
+      - "5438:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d payment_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+  
+  mail-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=mail_db
+    volumes:
+      - mail-db-data:/var/lib/postgresql/data
+    ports:
+      - "5439:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d mail_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7.0.5
+    ports:
+      - "6379:6379" 
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.2.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - app-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.2.1
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+    ports:
+      - "9092:9092"
+    networks:
+      - app-network
+    volumes:
+      - ./create-topics.sh:/docker-entrypoint-initdb.d/create-topics.sh
+    command:
+      - bash
+      - -c
+      - |
+        /etc/confluent/docker/run &
+        sleep 30
+        /docker-entrypoint-initdb.d/create-topics.sh
+        wait
+
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.2.1
+    depends_on:
+      - kafka
+      - product-db
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_GROUP_ID: connect-cluster
+      CONNECT_CONFIG_STORAGE_TOPIC: connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: connect-status
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: false
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: false
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+    volumes:
+      - ./connect-plugins:/usr/share/confluent-hub-components
+    command:
+      - bash
+      - -c
+      - |
+        /etc/confluent/docker/run &
+        sleep 10
+        confluent-hub install --no-prompt debezium/debezium-connector-postgres:2.3.0
+        wait
+    networks:
+      - app-network
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.name=product-search-cluster
+      - node.name=product-search-node
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - app-network
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.8.0
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - app-network
+
+  api-gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8081:80"
+    environment:
+      - PORT=80
+    depends_on:
+      - auth-service
+      - chat-service
+      - product-service
+      - order-service
+      - payment-service
+      - cart-service
+
+    volumes:
+      - ./gateway/conf.d:/etc/nginx/conf.d
+    networks:
+      - app-network
+
+  api-gateway-2:
+    build:
+      context: ./gateway2
+      dockerfile: Dockerfile
+    ports:
+      - "8082:80"
+    environment:
+      - PORT=80
+    depends_on:
+      - auth-service
+      - chat-service
+      - product-service
+      - order-service
+      - payment-service
+      - cart-service
+    volumes:
+      - ./gateway2/conf.d:/etc/nginx/nginx.conf
+    networks:
+      - app-network
+
+  gate-load-balancer:
+    build: 
+      context: ./devops/gate-loadbalancer
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    volumes:
+      - ./devops/gate-loadbalancer/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-gateway
+      - api-gateway2
+    networks:
+      - app-network
+
+
+  elk-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    container_name: elk-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9201:9200"
+    volumes:
+      - elk-es-data:/usr/share/elasticsearch/data
+    networks:
+      - app-network
+
+  elk-kibana:
+    image: docker.elastic.co/kibana/kibana:8.8.0
+    container_name: elk-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elk-elasticsearch:9201
+    ports:
+      - "5602:5601"
+    depends_on:
+      - elk-elasticsearch
+    networks:
+      - app-network      
+
+  elk-logstash:
+    image: docker.elastic.co/logstash/logstash:8.8.0
+    container_name: elk-logstash
+    ports:
+      - "5044:5044"
+    volumes:
+      - ./devops/elk/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    depends_on:
+      - elk-elasticsearch
+    networks:
+      - app-network
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.8.0
+    command: filebeat -e -strict.perms=false
+    container_name: filebeat
+    user: root
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./devops/elk/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+    depends_on:
+      - elk-logstash
+    networks:
+      - app-network
+
+
+volumes:
+  auth-db-data:
+  chat-db-data:
+  product-db-data:
+  elasticsearch-data:
+  elk-es-data:
+  cart-db-data:
+  redis-data:
+  order-db-data:
+  payment-db-data:
+  mail-db-data:
+
+networks:
+  app-network:
+    driver: bridge

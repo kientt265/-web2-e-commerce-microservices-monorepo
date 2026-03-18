@@ -1,188 +1,101 @@
-import { PrismaClient, order_status_enum } from '@prisma/client';
-import axios from 'axios';
-import {producer} from '../config/kafka';
-import type {Cart, CartItem, Product, StatusOrder} from '../types';
-const prisma = new PrismaClient();
+import { producer } from '../config/kafka';
+import { ORDER_EVENTS } from '../constants/orderEvents';
+import { CreateOrderRequest, OrderEvent, OrderResponse } from '../types/order';
 
-export const orderService = {
-  createOrder: async (userId: string, cartId: number, shippingAddress: string) => {
-    //check cart
-    const cartResponse = await axios.get<Cart>(`http://cart-service:3004/api/cart/user/cart/${userId}`);
-    const cart = cartResponse.data;
+export class OrderService {
+  private generateOrderId(): string {
+    return `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
 
-    if (!cart) {
-      throw new Error('Cart is empty');
-    }
-    //check inventory
-    // const productChecks = await Promise.all(
-    //   cart.cart_items.map(
-    //     async (item: CartItem) => {
-    //     const productResponse = await axios.get<Product>(`http://product-service:3003/products/${item.product_id}`);
-    //     return {
-    //       product: productResponse.data,
-    //       quantity: item.quantity
-    //     };
-    //   })
-    // );
+  private createOrderEvent(orderData: CreateOrderRequest, orderId: string): OrderEvent {
+    const eventType = orderData.paymentMethod === 'ONLINE_PAYMENT' 
+      ? ORDER_EVENTS.ORDER_CREATED_ONLINE_PAYMENT 
+      : ORDER_EVENTS.ORDER_CREATED_CASH_ON_DELIVERY;
 
-    // for (const check of productChecks) {
-    //   if (check.product.stock < check.quantity) {
-    //     throw new Error(`Insufficient stock for product ${check.product.name}`);
-    //   }
-    // }
+    return {
+      eventType,
+      orderId,
+      userId: orderData.userId,
+      items: orderData.items,
+      totalAmount: orderData.totalAmount,
+      shippingAddress: orderData.shippingAddress,
+      paymentMethod: orderData.paymentMethod,
+      timestamp: new Date().toISOString(),
+    };
+  }
 
-    const order = await prisma.$transaction(async (tx: any) => {
-      const order = await tx.orders.create({
-        data: {
-          user_id: userId,
-          status: 'pending',
-          shipping_address: shippingAddress,
-          total_amount: cart.cart_items.reduce(
-            (total: number, item: any) => total + item.price_at_added * item.quantity,
-            0
-          )
-        }
-      });
+  async publishOrderEvent(orderData: CreateOrderRequest): Promise<void> {
+    const orderId = this.generateOrderId();
+    const orderEvent = this.createOrderEvent(orderData, orderId);
 
-      await tx.order_items.createMany({
-        data: cart.cart_items.map((item: CartItem) => ({
-          order_id: order.id,
-          product_id: item.product_id,
-          quantity: item.quantity,
-          price_at_time: item.price_at_added
-        }))
-      });
-
-      const message = {
-        eventType: 'ORDER_CREATED',
-        orderId: order.id,
-        userId: userId,
-        status: order.status,
-        totalAmount: order.total_amount,
-        items: cart.cart_items.map((item: CartItem) => ({
-          productId: item.product_id,
-          quantity: item.quantity,
-          price: item.price_at_added
-        })),
-        createdAt: new Date().toISOString()
-      }
+    try {
       const topic = 'order-events';
       await producer.send({
         topic,
-        messages:[{value: JSON.stringify(message)}],
+        messages: [
+          {
+            key: orderId,
+            value: JSON.stringify(orderEvent),
+            headers: {
+              eventType: orderEvent.eventType,
+              timestamp: orderEvent.timestamp,
+            },
+          },
+        ],
       });
-      return order;
-    });
 
-    await Promise.all(
-      cart.cart_items.map((item: CartItem) =>
-        axios.patch(`http://product-service:3003/products/${item.product_id}/stock`, {
-          quantity: -item.quantity
-        })
-      )
-    );
-
-    await axios.delete(`http://cart-service:3004/api/cart/user/cart/${userId}/clear`);
-
-    // await axios.post('http://payment-service:3006/payments', {
-    //   order_id: order.id,
-    //   amount: order.total_amount
-    // });
-
-    return order;
-  },
-///////////////NOT CHECK ORTHER API SERVICE///////////////////////////
-//TODO Need check order API from service
-  getOrderById: async (orderId: string) => {
-    return prisma.orders.findUnique({
-      where: { id: Number(orderId) },
-      include: {
-        order_items: true
-      }
-    });
-  },
-
-  getUserOrders: async (userId: string, page: number, limit: number) => {
-    const skip = (page - 1) * limit;
-
-    const [orders, total] = await Promise.all([
-      prisma.orders.findMany({
-        where: { user_id: userId },
-        include: {
-          order_items: true
-        },
-        skip,
-        take: limit,
-        orderBy: {
-          created_at: 'desc'
-        }
-      }),
-      prisma.orders.count({
-        where: { user_id: userId }
-      })
-    ]);
-
-    return {
-      orders,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit)
-      }
-    };
-  },
-
-  updateOrderStatus: async (orderId: string, status: order_status_enum) => {
-    return prisma.orders.update({
-      where: { id: Number(orderId) },
-      data: { 
-        status,
-        updated_at: new Date()
-      }
-    });
-  },
-
-  cancelOrder: async (orderId: string) => {
-    const order = await prisma.orders.findUnique({
-      where: { id: Number(orderId) },
-      include: {
-        order_items: true
-      }
-    });
-
-    if (!order) {
-      throw new Error('Order not found');
+      console.log(`Order event published successfully: ${orderEvent.eventType} for order ${orderId}`);
+    } catch (error) {
+      console.error('Error publishing order event:', error);
+      throw new Error('Failed to publish order event');
     }
-
-    if (order.status !== 'pending') {
-      throw new Error('Can only cancel pending orders');
-    }
-
-    // 1. Cập nhật trạng thái đơn hàng
-    const updatedOrder = await prisma.orders.update({
-      where: { id: Number(orderId) },
-      data: {
-        status: 'cancelled',
-        updated_at: new Date()
-      }
-    });
-
-    // 2. Hoàn lại số lượng tồn kho
-    await Promise.all(
-      order.order_items.map((item: any) =>
-        axios.patch(`http://product-service:3003/products/${item.product_id}/stock`, {
-          quantity: item.quantity
-        })
-      )
-    );
-
-    // 3. Tạo yêu cầu hoàn tiền
-    await axios.post('http://payment-service:3006/refunds', {
-      order_id: orderId,
-      amount: order.total_amount
-    });
-
-    return updatedOrder;
   }
-};
+
+  async createOrder(orderData: CreateOrderRequest): Promise<OrderResponse> {
+    const orderId = this.generateOrderId();
+    const now = new Date().toISOString();
+
+    // TODO: Save order to database
+    // For now, we'll create the response object directly
+    
+    const orderResponse: OrderResponse = {
+      orderId,
+      userId: orderData.userId,
+      items: orderData.items,
+      totalAmount: orderData.totalAmount,
+      status: 'PENDING',
+      paymentMethod: orderData.paymentMethod,
+      paymentStatus: orderData.paymentMethod === 'CASH_ON_DELIVERY' ? 'PENDING' : 'PENDING',
+      shippingAddress: orderData.shippingAddress,
+      createdAt: now,
+      updatedAt: now,
+      paymentUrl: undefined, // TODO: Implement payment URL generation for online payment
+    };
+
+    // Publish order event to Kafka
+    await this.publishOrderEvent(orderData);
+
+    return orderResponse;
+  }
+
+  // TODO: Implement payment URL generation
+  private generatePaymentUrl(orderId: string, totalAmount: number): string {
+    // This is a placeholder for payment URL generation
+    // You'll implement this later with actual payment gateway integration
+    return `https://payment.example.com/pay?orderId=${orderId}&amount=${totalAmount}`;
+  }
+
+  async getOrderById(orderId: string): Promise<OrderResponse | null> {
+    // TODO: Implement database query to get order by ID
+    // For now, return null as placeholder
+    console.log(`Getting order by ID: ${orderId}`);
+    return null;
+  }
+
+  async getOrdersByUserId(userId: string): Promise<OrderResponse[]> {
+    // TODO: Implement database query to get orders by user ID
+    // For now, return empty array as placeholder
+    console.log(`Getting orders for user: ${userId}`);
+    return [];
+  }
+}

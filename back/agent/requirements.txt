@@ -1,9 +1,0 @@
-langchain
-langgraph
-langchain-community
-langchain-google-genai
-fastapi
-uvicorn
-pydantic
-langchain_tavily
-langchain-google-vertexai

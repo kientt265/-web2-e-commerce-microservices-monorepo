@@ -1,100 +1,79 @@
 import express from 'express';
-import { config } from 'dotenv';
-import productRoutes from './routes/productRoute';
-import { elasticsearchService } from './services/elasticsearchService';
-import { kafkaService } from './services/kafkaServiceElastic';
+import cors from 'cors';
+import { PrismaClient } from '@prisma/client';
+import dotenv from "dotenv";
+import cookieParser from 'cookie-parser';
+import productRoutes from './routes/productRoutes';
+import { openApiSpec } from './openapi';
 
-config();
+dotenv.config();
 
+const prisma = new PrismaClient();
 const app = express();
-const PORT = process.env.PRODUCT_PORT || 3003;
+const port = process.env.PRODUCT_PORT || 3001;
 
-// Middleware
+const allowedOrigins =
+  process.env.CORS_ORIGINS?.split(',').map((o: string) => o.trim()).filter(Boolean) ??
+  ['http://localhost:5173'];
+
+const corsOptions: cors.CorsOptions = {
+  origin: allowedOrigins,
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-// Health check endpoint
-app.get('/health', async (req: express.Request, res: express.Response) => {
-  try {
-    const esHealth = await elasticsearchService.healthCheck();
-    
-    res.json({ 
-      status: 'OK', 
-      service: 'Product Service',
-      timestamp: new Date().toISOString(),
-      elasticsearch: esHealth,
-      kafka: 'Connected'
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      status: 'ERROR',
-      service: 'Product Service',
-      timestamp: new Date().toISOString(),
-      error: error.message
-    });
-  }
+app.get('/openapi.json', (_req, res) => {
+  res.status(200).json(openApiSpec);
 });
 
-// API Routes
+app.get('/docs', (_req, res) => {
+  res.status(200).type('html').send(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Product Service API Docs</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+    <style>
+      body { margin: 0; background: #0b1020; }
+      #swagger-ui { background: white; }
+    </style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script>
+      window.ui = SwaggerUIBundle({
+        url: '/openapi.json',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        persistAuthorization: true
+      });
+    </script>
+  </body>
+</html>`);
+});
+
 app.use('/', productRoutes);
-app.get('/run', (req, res) => {
+
+app.get('/run', (_req, res) => {
   res.send('Product Service is running');
 });
-
-// Error handling middleware
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err);
-  res.status(500).json({ 
-    error: 'Internal server error',
-    message: err.message 
-  });
-});
-
-// 404 handler
 app.use('*', (req: express.Request, res: express.Response) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// Initialize services and start server
-async function startServer() {
-  try {
-    // Initialize Elasticsearch
-    console.log('🔄 Initializing Elasticsearch...');
-    await elasticsearchService.initializeIndex();
-    
-    // Initialize Kafka consumer
-    console.log('🔄 Initializing Kafka consumer...');
-    await kafkaService.initializeConsumer();
-    
-    // Initialize existing data
-    console.log('🔄 Initializing existing data...');
-    await kafkaService.initializeData();
-    
-    // Start server
-    app.listen(PORT, () => {
-      console.log(`🚀 Product Service running on port ${PORT}`);
-      console.log(`📚 API Documentation: http://localhost:${PORT}/api/v1`);
-      console.log(`🏥 Health Check: http://localhost:${PORT}/health`);
-      console.log(`🔍 Search API: http://localhost:${PORT}/api/v1/search/products`);
-      console.log(`💡 Suggestions API: http://localhost:${PORT}/api/v1/suggest/products`);
-    });
-  } catch (error) {
-    console.error('❌ Failed to start server:', error);
-    process.exit(1);
-  }
-}
+app.listen(port, async () => {
+  console.log(`Product Service is running on port ${port}`);
+});
 
-// Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('🔄 Shutting down gracefully...');
-  await kafkaService.disconnect();
+  console.log('Shutting down Product Service...');
+  await prisma.$disconnect();
   process.exit(0);
 });
-
-process.on('SIGINT', async () => {
-  console.log('🔄 Shutting down gracefully...');
-  await kafkaService.disconnect();
-  process.exit(0);
-});
-
-startServer();

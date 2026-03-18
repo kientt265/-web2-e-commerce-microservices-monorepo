@@ -1,21 +1,16 @@
 import { Router } from 'express';
-import { authMiddleware } from '../middleware/auth';
-import {
-  createOrder,
-  getOrderById,
-  getUserOrders,
-  updateOrderStatus,
-  cancelOrder
-} from '../controllers/orderController';
+import { OrderController } from '../controllers/orderController';
 
 const router = Router();
+const orderController = new OrderController();
 
-router.use(authMiddleware);
+// POST /api/orders - Create a new order
+router.post('/', orderController.createOrder);
 
-router.post('/orders', createOrder);
-router.get('/orders/:id', getOrderById);
-router.get('/orders/user/:userId', getUserOrders);
-router.patch('/orders/:id/status', updateOrderStatus);
-router.post('/orders/:id/cancel', cancelOrder);
+// GET /api/orders/:orderId - Get order by ID
+router.get('/:orderId', orderController.getOrderById);
+
+// GET /api/orders/user/:userId - Get all orders for a user
+router.get('/user/:userId', orderController.getOrdersByUserId);
 
 export default router;
