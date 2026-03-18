@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model payments {
+  id              Int         @id @default(autoincrement())
+  order_id        String      @unique
+  user_id         String      @db.Uuid
+  amount          Decimal     @db.Decimal(10, 2)
+  payment_method   PaymentMethod @default(ONLINE_PAYMENT)
+  status          PaymentStatus @default(PENDING)
+  transaction_id  String?
+  gateway_response Json?
+  payment_url     String?
+  expires_at      DateTime?
+  paid_at         DateTime?
+  failed_at       DateTime?
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+  
+  attempts  payment_attempts[]
+  webhooks   payment_webhooks[]
+  
+  @@map("payments")
+}
+
+model payment_attempts {
+  id              Int      @id @default(autoincrement())
+  payment_id       Int
+  attempt_number   Int      @default(1)
+  gateway         String
+  status          String
+  error_code      String?
+  error_message   String?
+  gateway_request  Json?
+  gateway_response Json?
+  created_at      DateTime @default(now())
+  
+  payment         payments  @relation(fields: [payment_id], references: [id], onDelete: Cascade)
+  
+  @@map("payment_attempts")
+}
+
+model payment_webhooks {
+  id            Int      @id @default(autoincrement())
+  payment_id     Int
+  event_type     String
+  gateway        String
+  payload        Json
+  processed      Boolean  @default(false)
+  created_at     DateTime @default(now())
+  
+  payment        payments  @relation(fields: [payment_id], references: [id], onDelete: Cascade)
+  
+  @@map("payment_webhooks")
+}
+
+enum PaymentMethod {
+  ONLINE_PAYMENT
+  CASH_ON_DELIVERY
+  CREDIT_CARD
+  DEBIT_CARD
+  BANK_TRANSFER
+  E_WALLET
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+

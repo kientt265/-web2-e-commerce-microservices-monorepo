@@ -169,6 +169,33 @@ services:
     networks:
       - app-network
 
+  payment-service:
+    build:
+      context: ./back/payment-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./back/payment-service/.env
+    ports: 
+      - "3008:3001"
+    environment:
+      - PAYMENT_PORT=3001
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@payment-db:5432/payment_db?schema=public
+      - PRISMA_CLIENT_ENGINE_TYPE=binary
+      - PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+      - PRISMA_SEED=false
+      - KAFKA_BROKER_1=kafka-1:9092
+      - KAFKA_BROKER_2=kafka-2:9092
+    depends_on:
+      - payment-db
+      - kafka-1
+      - kafka-2
+    volumes:
+      - ./back/payment-service:/app
+      - /app/node_modules
+    command: npm run dev
+    networks:
+      - app-network
+
   auth-db:
     image: postgres:15
     healthcheck:
@@ -295,6 +322,24 @@ services:
     networks:
       - app-network
 
+  payment-db:
+    image: postgres:15
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=payment_db
+    volumes:
+      - payment-db-data:/var/lib/postgresql/data
+    ports:
+      - "5441:5432"
+    networks:
+      - app-network
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     environment:
@@ -351,6 +396,7 @@ volumes:
   inventory-db-data:
   delivery-db-data:
   rating-db-data:
+  payment-db-data:
 
 networks:
   app-network:
