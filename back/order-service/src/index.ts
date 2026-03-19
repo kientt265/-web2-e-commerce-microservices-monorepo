@@ -3,7 +3,7 @@ import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
-import { connectProducer, disconnectProducer } from './config/kafka';
+// import { connectProducer, disconnectProducer } from './config/kafka';
 import orderRoutes from './routes/orderRoutes';
 import { openApiSpec } from './openapi';
 
@@ -74,17 +74,17 @@ app.use('*', (req: express.Request, res: express.Response) => {
 app.listen(port, async () => {
   console.log(`Order Service is running on port ${port}`);
   
-  // Connect to Kafka producer
-  try {
-    await connectProducer();
-  } catch (error) {
-    console.error('Failed to connect Kafka producer:', error);
-  }
+  // Connect to Kafka producer (commented out - using outbox pattern instead)
+  // try {
+  //   await connectProducer();
+  // } catch (error) {
+  //   console.error('Failed to connect Kafka producer:', error);
+  // }
 });
 
 process.on('SIGTERM', async () => {
   console.log('Shutting down Order Service...');
-  await disconnectProducer();
+  // await disconnectProducer(); // Commented out - using outbox pattern instead
   await prisma.$disconnect();
   process.exit(0);
 });

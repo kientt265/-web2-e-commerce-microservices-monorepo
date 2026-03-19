@@ -10,36 +10,46 @@ export class InventoryService {
 
   async processOrderEvent(orderEvent: OrderEvent): Promise<void> {
     try {
-      console.log(`Processing order event: ${orderEvent.eventType} for order ${orderEvent.orderId}`);
+      console.log(`🔄 Processing order event: ${orderEvent.eventType} for order ${orderEvent.orderId}`);
+      console.log(`📦 Items to process: ${orderEvent.items?.length || 0}`);
 
       // Process each item in order
       for (const item of orderEvent.items) {
+        console.log(`🔄 Processing item: Product ${item.productId}, Quantity ${item.quantity}`);
         await this.processOrderItem(orderEvent, item);
+        console.log(`✅ Processed item ${item.productId} successfully`);
       }
 
-      console.log(`Successfully processed order event: ${orderEvent.eventType} for order ${orderEvent.orderId}`);
+      console.log(`🎉 Successfully processed order event: ${orderEvent.eventType} for order ${orderEvent.orderId}`);
     } catch (error) {
-      console.error(`Error processing order event ${orderEvent.eventType} for order ${orderEvent.orderId}:`, error);
+      console.error(`❌ Error processing order event ${orderEvent.eventType} for order ${orderEvent.orderId}:`, error);
       throw error;
     }
   }
 
   private async processOrderItem(orderEvent: OrderEvent, item: { productId: string; quantity: number; price: number }): Promise<void> {
+    console.log(`🔍 Looking for inventory for product: ${item.productId}`);
+    
     // Find or create inventory record for this product
     let inventory = await this.findInventoryByProductId(item.productId);
     
     if (!inventory) {
+      console.log(`⚠️ No inventory found for product ${item.productId}, creating new record`);
       inventory = await this.createInventoryRecord(item.productId);
+      console.log(`✅ Created new inventory record for product ${item.productId}, ID: ${inventory.id}`);
+    } else {
+      console.log(`✅ Found inventory for product ${item.productId}, ID: ${inventory.id}, Available: ${inventory.quantity}`);
     }
 
     // Determine which reservation field to update based on payment method
-    if (orderEvent.paymentMethod === 'CASH_ON_DELIVERY') {
-      await this.updateInventoryReservation(inventory.id, 'reserved_shipping', item.quantity);
-    } else if (orderEvent.paymentMethod === 'ONLINE_PAYMENT') {
-      await this.updateInventoryReservation(inventory.id, 'reserved_checkout', item.quantity);
-    }
+    const reservationField = orderEvent.paymentMethod === 'CASH_ON_DELIVERY' ? 'reserved_shipping' : 'reserved_checkout';
+    console.log(`📋 Reserving ${item.quantity} units in ${reservationField} for ${orderEvent.paymentMethod}`);
+    
+    await this.updateInventoryReservation(inventory.id, reservationField, item.quantity);
+    console.log(`✅ Reserved ${item.quantity} units successfully`);
 
     // Create inventory transaction record with data from order event
+    console.log(`💳 Creating transaction record for order ${orderEvent.orderId}`);
     await this.createInventoryTransaction(
       inventory.id,
       orderEvent.orderId,
@@ -48,7 +58,7 @@ export class InventoryService {
       'PENDING' // Initial status when order is created
     );
 
-    console.log(`Processed item ${item.productId}: reserved ${item.quantity} units for ${orderEvent.paymentMethod === 'CASH_ON_DELIVERY' ? 'reserved_shipping' : 'reserved_checkout'}`);
+    console.log(`💰 Transaction created successfully - Item ${item.productId}: reserved ${item.quantity} units for ${reservationField}`);
   }
 
   private async findInventoryByProductId(productId: string): Promise<any> {

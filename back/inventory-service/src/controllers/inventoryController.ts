@@ -68,6 +68,14 @@ export class InventoryController {
     try {
       const inventoryData = req.body;
 
+      // Validate required fields
+      if (!inventoryData.product_id) {
+        return res.status(400).json({
+          error: 'Invalid product ID',
+          message: 'Product ID is required',
+        });
+      }
+
       if (!inventoryData.quantity || inventoryData.quantity < 0) {
         return res.status(400).json({
           error: 'Invalid quantity',

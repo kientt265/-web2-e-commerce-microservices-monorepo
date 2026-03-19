@@ -1,8 +1,11 @@
-import { producer } from '../config/kafka';
+// import { producer } from '../config/kafka';
 import { ORDER_EVENTS } from '../constants/orderEvents';
 import { CreateOrderRequest, OrderEvent, OrderResponse } from '../types/order';
+import { OutboxService } from './outboxService';
 
 export class OrderService {
+  private outboxService = new OutboxService();
+
   private generateOrderId(): string {
     return `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
@@ -29,25 +32,29 @@ export class OrderService {
     const orderEvent = this.createOrderEvent(orderData, orderId);
 
     try {
-      const topic = 'order-events';
-      await producer.send({
-        topic,
-        messages: [
-          {
-            key: orderId,
-            value: JSON.stringify(orderEvent),
-            headers: {
-              eventType: orderEvent.eventType,
-              timestamp: orderEvent.timestamp,
-            },
-          },
-        ],
-      });
+      // Save to outbox table instead of publishing directly to Kafka
+      await this.outboxService.saveOrderEvent(orderEvent);
 
-      console.log(`Order event published successfully: ${orderEvent.eventType} for order ${orderId}`);
+      // Old Kafka publishing code (commented out):
+      // const topic = 'order-events';
+      // await producer.send({
+      //   topic,
+      //   messages: [
+      //     {
+      //       key: orderId,
+      //       value: JSON.stringify(orderEvent),
+      //       headers: {
+      //         eventType: orderEvent.eventType,
+      //         timestamp: orderEvent.timestamp,
+      //       },
+      //     },
+      //   ],
+      // });
+
+      console.log(`Order event saved to outbox: ${orderEvent.eventType} for order ${orderId}`);
     } catch (error) {
-      console.error('Error publishing order event:', error);
-      throw new Error('Failed to publish order event');
+      console.error('Error saving order event to outbox:', error);
+      throw new Error('Failed to save order event to outbox');
     }
   }
 

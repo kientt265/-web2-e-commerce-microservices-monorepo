@@ -28,10 +28,10 @@ export const disconnectConsumer = async () => {
 
 export const subscribeToOrderEvents = async () => {
   try {
-    await consumer.subscribe({ topic: 'order-events', fromBeginning: false });
-    console.log('Subscribed to order-events topic');
+    await consumer.subscribe({ topic: 'outbox.order', fromBeginning: false });
+    console.log('Subscribed to outbox.order topic');
   } catch (error) {
-    console.error('Error subscribing to order-events topic:', error);
+    console.error('Error subscribing to outbox.order topic:', error);
     throw error;
   }
 };
