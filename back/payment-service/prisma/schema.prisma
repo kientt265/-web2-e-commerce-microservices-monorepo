@@ -60,6 +60,18 @@ model payment_webhooks {
   @@map("payment_webhooks")
 }
 
+model outbox {
+  id              String   @id @db.Uuid
+  event_type      String?  @db.Text
+  payload         Json?    @db.JsonB
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+  aggregateid     String?  @db.VarChar(255)
+  aggregatetype   String?  @db.VarChar(255)
+  type            String?  @db.VarChar(255)
+
+  @@map("outbox")
+}
+
 enum PaymentMethod {
   ONLINE_PAYMENT
   CASH_ON_DELIVERY
