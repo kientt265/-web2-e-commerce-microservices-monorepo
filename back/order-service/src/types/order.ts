@@ -54,3 +54,12 @@ export interface OrderResponse {
   updatedAt: string;
   paymentUrl?: string; // TODO: Implement payment URL generation
 }
+
+export interface DeliveryEvent {
+  eventType: 'DELIVERY_CREATED' | 'DELIVERY_PICKED_UP' | 'DELIVERY_DELIVERED' | 'DELIVERY_FAILED' | 'DELIVERY_CANCELLED';
+  orderId: string;
+  userId?: string;
+  productId?: string;
+  status: string;
+  timestamp: string;
+}

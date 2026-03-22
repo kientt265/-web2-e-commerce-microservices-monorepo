@@ -34,32 +34,32 @@ export class VNPayService {
   }
 
   createPaymentUrl(request: VNPayPaymentUrlRequest): string {
-    // const paymentUrl = this.vnpay.buildPaymentUrl({
-    //   vnp_TxnRef: request.orderId,
-    //   vnp_OrderInfo: request.orderInfo,
-    //   // vnp_Amount in VNPay is in VND; vnpay.js will handle scaling.
-    //   vnp_Amount: request.amount,
-    //   vnp_IpAddr: request.ipAddress,
-    //   vnp_BankCode: request.bankCode,
-    //   vnp_OrderType: ProductCode.Other,
-    //   vnp_Locale: VnpLocale.VN,
-    //   vnp_ReturnUrl:
-    //     process.env.VNPAY_RETURN_URL ||
-    //     'http://localhost:3008/api/payments/vnpay-return',
-    // });
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
     const paymentUrl = this.vnpay.buildPaymentUrl({
-      vnp_Amount: 10000,
-      vnp_IpAddr: '13.160.92.202',
-      vnp_TxnRef: '113372',
-      vnp_OrderInfo: 'Thanh toan don hang 123456',
+      vnp_TxnRef: request.orderId,
+      vnp_OrderInfo: request.orderInfo,
+      // vnp_Amount in VNPay is in VND; vnpay.js will handle scaling.
+      vnp_Amount: request.amount,
+      vnp_IpAddr: request.ipAddress,
+      vnp_BankCode: request.bankCode,
       vnp_OrderType: ProductCode.Other,
-      vnp_ReturnUrl: 'http://localhost:3003/api/payments/vnpay-return',
-      vnp_Locale: VnpLocale.VN, // 'vn' hoặc 'en'
-      vnp_CreateDate: dateFormat(new Date()), // tùy chọn, mặc định là thời gian hiện tại
-      vnp_ExpireDate: dateFormat(tomorrow), // tùy chọn
-  });
+      vnp_Locale: VnpLocale.VN,
+      vnp_ReturnUrl:
+        process.env.VNPAY_RETURN_URL ||
+        'http://localhost:3008/api/payments/vnpay-return',
+    });
+  //   const tomorrow = new Date();
+  //   tomorrow.setDate(tomorrow.getDate() + 1);
+  //   const paymentUrl = this.vnpay.buildPaymentUrl({
+  //     vnp_Amount: 10000,
+  //     vnp_IpAddr: '13.160.92.202',
+  //     vnp_TxnRef: '113373',
+  //     vnp_OrderInfo: 'Thanh toan don hang 123456',
+  //     vnp_OrderType: ProductCode.Other,
+  //     vnp_ReturnUrl: 'http://localhost:3003/api/payments/vnpay-return',
+  //     vnp_Locale: VnpLocale.VN, // 'vn' hoặc 'en'
+  //     vnp_CreateDate: dateFormat(new Date()), // tùy chọn, mặc định là thời gian hiện tại
+  //     vnp_ExpireDate: dateFormat(tomorrow), // tùy chọn
+  // });
 
     return paymentUrl;
   }

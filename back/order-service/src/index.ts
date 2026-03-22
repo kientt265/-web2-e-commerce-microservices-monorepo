@@ -3,7 +3,8 @@ import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
-// import { connectProducer, disconnectProducer } from './config/kafka';
+import { connectConsumer, disconnectConsumer, subscribeToDeliveryEvents } from './config/kafka';
+import { KafkaConsumerService } from './services/kafkaConsumerService';
 import orderRoutes from './routes/orderRoutes';
 import paymentRoutes from './routes/paymentRoutes';
 import { openApiSpec } from './openapi';
@@ -13,6 +14,7 @@ dotenv.config();
 const prisma = new PrismaClient();
 const app = express();
 const port = process.env.ORDER_PORT || 3003;
+let kafkaConsumerService: KafkaConsumerService;
 
 const allowedOrigins =
   process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean) ??
@@ -76,17 +78,23 @@ app.use('*', (req: express.Request, res: express.Response) => {
 app.listen(port, async () => {
   console.log(`Order Service is running on port ${port}`);
   
-  // Connect to Kafka producer (commented out - using outbox pattern instead)
-  // try {
-  //   await connectProducer();
-  // } catch (error) {
-  //   console.error('Failed to connect Kafka producer:', error);
-  // }
+  try {
+    await connectConsumer();
+    await subscribeToDeliveryEvents();
+    kafkaConsumerService = new KafkaConsumerService();
+    await kafkaConsumerService.startConsumer();
+    console.log('Kafka consumer service started successfully');
+  } catch (error) {
+    console.error('Failed to start Kafka consumer service:', error);
+  }
 });
 
 process.on('SIGTERM', async () => {
   console.log('Shutting down Order Service...');
-  // await disconnectProducer(); // Commented out - using outbox pattern instead
+  if (kafkaConsumerService) {
+    await kafkaConsumerService.stopConsumer();
+  }
+  await disconnectConsumer();
   await prisma.$disconnect();
   process.exit(0);
 });
