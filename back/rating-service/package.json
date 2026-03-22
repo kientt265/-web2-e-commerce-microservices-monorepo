@@ -9,7 +9,7 @@
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "db:push": "prisma db push --schema prisma/schema.prisma",
     "db:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
-    "dev": "npm run prisma:generate && ts-node-dev --poll --respawn --transpile-only --ignore-watch node_modules src/index.ts",
+    "dev": "nodemon --legacy-watch --watch src --watch prisma/schema.prisma --ext ts --exec \"node scripts/dev-with-prisma.cjs\"",
     "db:seed": "prisma db seed --schema prisma/schema.prisma"
   },
   "prisma": {

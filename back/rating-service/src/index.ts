@@ -1,14 +1,16 @@
 import express from 'express';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
 import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
 import ratingRoutes from './routes/ratingRoutes';
 import { openApiSpec } from './openapi';
+import { prisma } from './lib/prisma';
+import { connectConsumer, disconnectConsumer, subscribeToDeliveryOutbox } from './config/kafka';
+import { DeliveryOutboxController } from './controllers/deliveryOutboxController';
+import { DeliveryOutboxConsumer } from './consumers/deliveryOutboxConsumer';
 
 dotenv.config();
 
-const prisma = new PrismaClient();
 const app = express();
 const port = process.env.RATING_PORT || 3007;
 
@@ -69,10 +71,25 @@ app.use('*', (req: express.Request, res: express.Response) => {
 
 app.listen(port, async () => {
   console.log(`Rating Service is running on port ${port}`);
+
+  try {
+    await connectConsumer();
+    await subscribeToDeliveryOutbox();
+    const deliveryOutboxController = new DeliveryOutboxController();
+    await new DeliveryOutboxConsumer(deliveryOutboxController).start();
+    console.log('[kafka] Delivery outbox consumer started');
+  } catch (err) {
+    console.error('[kafka] Failed to start delivery outbox consumer:', err);
+  }
 });
 
 process.on('SIGTERM', async () => {
   console.log('Shutting down Rating Service...');
+  try {
+    await disconnectConsumer();
+  } catch (e) {
+    console.error('[kafka] disconnect error:', e);
+  }
   await prisma.$disconnect();
   process.exit(0);
 });

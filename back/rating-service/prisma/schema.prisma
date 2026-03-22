@@ -44,3 +44,19 @@ model rating_helpful_votes {
 
   @@unique([rating_id, user_id])
 }
+
+/// Created when a delivery is completed so the buyer can submit a product rating for that order line.
+model rating_eligibilities {
+  id            Int       @id @default(autoincrement())
+  user_id       String    @db.Uuid
+  order_id      Int
+  product_id    Int
+  delivery_id   Int?
+  delivered_at  DateTime? @db.Timestamp(6)
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+
+  @@unique([user_id, order_id, product_id])
+  @@index([user_id])
+  @@index([order_id])
+  @@index([product_id])
+}
