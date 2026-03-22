@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
 // import { connectProducer, disconnectProducer } from './config/kafka';
 import orderRoutes from './routes/orderRoutes';
+import paymentRoutes from './routes/paymentRoutes';
 import { openApiSpec } from './openapi';
 
 dotenv.config();
@@ -63,6 +64,7 @@ app.get('/docs', (_req, res) => {
 
 // API routes
 app.use('/api/orders', orderRoutes);
+app.use('/api/orders', paymentRoutes);
 
 app.get('/run', (req, res) => {
   res.send('Order Service is running');

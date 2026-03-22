@@ -5,6 +5,13 @@ import { CreateOrderRequest } from '../types/order';
 export class OrderController {
   private orderService: OrderService;
 
+  private isUuid(value: string): boolean {
+    // Runtime validation: prisma expects Postgres UUID.
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    );
+  }
+
   constructor() {
     this.orderService = new OrderService();
   }
@@ -18,6 +25,13 @@ export class OrderController {
         return res.status(400).json({
           error: 'Missing required fields',
           message: 'userId, items, shippingAddress, and paymentMethod are required',
+        });
+      }
+
+      if (typeof orderData.userId !== 'string' || !this.isUuid(orderData.userId)) {
+        return res.status(400).json({
+          error: 'Invalid userId',
+          message: 'userId must be a valid UUID',
         });
       }
 

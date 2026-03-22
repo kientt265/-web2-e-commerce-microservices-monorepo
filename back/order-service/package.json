@@ -29,7 +29,8 @@
     "kafkajs": "^2.2.4",
     "pg": "^8.11.3",
     "typescript": "^5.2.2",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "vnpay": "^2.4.4"
   },
   "devDependencies": {
     "@types/amqplib": "^0.10.1",

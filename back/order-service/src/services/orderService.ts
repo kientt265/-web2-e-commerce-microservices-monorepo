@@ -2,13 +2,20 @@
 import { ORDER_EVENTS } from '../constants/orderEvents';
 import { CreateOrderRequest, OrderEvent, OrderResponse } from '../types/order';
 import { OutboxService } from './outboxService';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export class OrderService {
   private outboxService = new OutboxService();
 
   private generateOrderId(): string {
-    return `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
+  // Generate a much smaller number that fits in INT4 (max 2,147,483,647)
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000);
+  const id = (timestamp % 100000) * 1000 + random; // Keep it under 100,000,000
+  return `order_${id}`;
+}
 
   private createOrderEvent(orderData: CreateOrderRequest, orderId: string): OrderEvent {
     const eventType = orderData.paymentMethod === 'ONLINE_PAYMENT' 
@@ -60,49 +67,162 @@ export class OrderService {
 
   async createOrder(orderData: CreateOrderRequest): Promise<OrderResponse> {
     const orderId = this.generateOrderId();
-    const now = new Date().toISOString();
+    const now = new Date();
 
-    // TODO: Save order to database
-    // For now, we'll create the response object directly
-    
-    const orderResponse: OrderResponse = {
-      orderId,
-      userId: orderData.userId,
-      items: orderData.items,
-      totalAmount: orderData.totalAmount,
-      status: 'PENDING',
-      paymentMethod: orderData.paymentMethod,
-      paymentStatus: orderData.paymentMethod === 'CASH_ON_DELIVERY' ? 'PENDING' : 'PENDING',
-      shippingAddress: orderData.shippingAddress,
-      createdAt: now,
-      updatedAt: now,
-      paymentUrl: undefined, // TODO: Implement payment URL generation for online payment
-    };
+    try {
+      // Save order to database using Prisma
+      const order = await prisma.orders.create({
+        data: {
+          id: parseInt(orderId.split('_')[1]), // Extract numeric ID from order string
+          user_id: orderData.userId,
+          status: 'pending',
+          payment_method: orderData.paymentMethod === 'ONLINE_PAYMENT' ? 'ONLINE' : 'COD',
+          total_amount: orderData.totalAmount,
+          shipping_address: JSON.stringify(orderData.shippingAddress),
+          created_at: now,
+          updated_at: now,
+        },
+      });
 
-    // Publish order event to Kafka
-    await this.publishOrderEvent(orderData);
+      // Save order items
+      for (const item of orderData.items) {
+        await prisma.order_items.create({
+          data: {
+            order_id: order.id,
+            product_id: parseInt(item.productId.replace('product_', '')), // Extract numeric ID
+            quantity: item.quantity,
+            price_at_time: item.price,
+            created_at: now,
+          },
+        });
+      }
 
-    return orderResponse;
+      console.log(`✅ Order saved to database: ${orderId}`);
+
+      // Publish order event to Kafka (outbox pattern)
+      await this.publishOrderEvent(orderData);
+
+      // Generate payment URL for online payment
+      let paymentUrl: string | undefined;
+      if (orderData.paymentMethod === 'ONLINE_PAYMENT') {
+        paymentUrl = await this.generatePaymentUrl(orderId, orderData.totalAmount);
+      }
+
+      const orderResponse: OrderResponse = {
+        orderId,
+        userId: orderData.userId,
+        items: orderData.items,
+        totalAmount: orderData.totalAmount,
+        status: 'PENDING',
+        paymentMethod: orderData.paymentMethod,
+        paymentStatus: orderData.paymentMethod === 'CASH_ON_DELIVERY' ? 'PENDING' : 'PENDING',
+        shippingAddress: orderData.shippingAddress,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        paymentUrl,
+      };
+
+      return orderResponse;
+    } catch (error) {
+      console.error('❌ Error creating order in database:', error);
+      throw new Error('Failed to create order');
+    }
   }
 
-  // TODO: Implement payment URL generation
-  private generatePaymentUrl(orderId: string, totalAmount: number): string {
-    // This is a placeholder for payment URL generation
-    // You'll implement this later with actual payment gateway integration
-    return `https://payment.example.com/pay?orderId=${orderId}&amount=${totalAmount}`;
+  private async generatePaymentUrl(orderId: string, totalAmount: number): Promise<string> {
+    try {
+      const { VNPayService } = await import('./vnpayService');
+      const vnpayService = new VNPayService();
+      
+      const paymentUrl = vnpayService.createPaymentUrl({
+        orderId,
+        amount: totalAmount,
+        orderInfo: `Thanh toan don hang ${orderId}`,
+        ipAddress: '127.0.0.1', // TODO: Get real IP from request
+      });
+      
+      console.log(`✅ Payment URL generated for order ${orderId}: ${paymentUrl}`);
+      return paymentUrl;
+    } catch (error) {
+      console.error('❌ Error generating payment URL:', error);
+      throw new Error('Failed to generate payment URL');
+    }
   }
 
   async getOrderById(orderId: string): Promise<OrderResponse | null> {
-    // TODO: Implement database query to get order by ID
-    // For now, return null as placeholder
-    console.log(`Getting order by ID: ${orderId}`);
-    return null;
+    try {
+      const order = await prisma.orders.findFirst({
+        where: {
+          id: parseInt(orderId.split('_')[1]) // Extract numeric ID from order string
+        },
+        include: {
+          order_items: true
+        }
+      });
+
+      if (!order) {
+        return null;
+      }
+
+      const orderResponse: OrderResponse = {
+        orderId: `order_${order.id}`,
+        userId: order.user_id,
+        items: order.order_items.map(item => ({
+          productId: `product_${item.product_id}`,
+          quantity: item.quantity,
+          price: item.price_at_time
+        })),
+        totalAmount: order.total_amount,
+        status: order.status.toUpperCase(),
+        paymentMethod: order.payment_method === 'ONLINE' ? 'ONLINE_PAYMENT' : 'CASH_ON_DELIVERY',
+        paymentStatus: 'PENDING', // TODO: Get from payment service
+        shippingAddress: JSON.parse(order.shipping_address),
+        createdAt: order.created_at?.toISOString() || '',
+        updatedAt: order.updated_at?.toISOString() || '',
+        paymentUrl: undefined,
+      };
+
+      return orderResponse;
+    } catch (error) {
+      console.error('❌ Error getting order by ID:', error);
+      throw new Error('Failed to get order');
+    }
   }
 
   async getOrdersByUserId(userId: string): Promise<OrderResponse[]> {
-    // TODO: Implement database query to get orders by user ID
-    // For now, return empty array as placeholder
-    console.log(`Getting orders for user: ${userId}`);
-    return [];
+    try {
+      const orders = await prisma.orders.findMany({
+        where: {
+          user_id: userId
+        },
+        include: {
+          order_items: true
+        },
+        orderBy: {
+          created_at: 'desc'
+        }
+      });
+
+      return orders.map(order => ({
+        orderId: `order_${order.id}`,
+        userId: order.user_id,
+        items: order.order_items.map(item => ({
+          productId: `product_${item.product_id}`,
+          quantity: item.quantity,
+          price: item.price_at_time
+        })),
+        totalAmount: order.total_amount,
+        status: order.status.toUpperCase(),
+        paymentMethod: order.payment_method === 'ONLINE' ? 'ONLINE_PAYMENT' : 'CASH_ON_DELIVERY',
+        paymentStatus: 'PENDING', // TODO: Get from payment service
+        shippingAddress: JSON.parse(order.shipping_address),
+        createdAt: order.created_at?.toISOString() || '',
+        updatedAt: order.updated_at?.toISOString() || '',
+        paymentUrl: undefined,
+      }));
+    } catch (error) {
+      console.error('❌ Error getting orders by user ID:', error);
+      throw new Error('Failed to get orders');
+    }
   }
 }
