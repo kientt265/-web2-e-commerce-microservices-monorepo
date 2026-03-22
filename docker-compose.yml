@@ -137,8 +137,12 @@ services:
       - PRISMA_CLIENT_ENGINE_TYPE=binary
       - PRISMA_CLI_QUERY_ENGINE_TYPE=binary
       - PRISMA_SEED=false
+      - KAFKA_BROKER_1=kafka-1:9092
+      - KAFKA_BROKER_2=kafka-2:9092
     depends_on:
       - delivery-db
+      - kafka-1
+      - kafka-2
     volumes:
       - ./back/delivery-service:/app
       - /app/node_modules
@@ -296,6 +300,10 @@ services:
 
   delivery-db:
     image: postgres:15
+    command: >
+      postgres -c wal_level=logical
+               -c max_replication_slots=10
+               -c max_wal_senders=10
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
