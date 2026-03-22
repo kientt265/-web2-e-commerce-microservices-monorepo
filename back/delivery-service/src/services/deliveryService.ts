@@ -187,11 +187,11 @@ export class DeliveryService {
     });
   }
 
-  async getDeliveriesByOrderId(orderId: string) {
-    const orderIdNum = DeliveryValidationUtils.validateOrderId(orderId);
+  async getDeliveriesByOrderId(orderIdParam: string) {
+    const orderId = DeliveryValidationUtils.validateOrderId(orderIdParam);
 
     const deliveries = await prisma.deliveries.findMany({
-      where: { order_id: orderIdNum },
+      where: { order_id: orderId },
       include: { delivery_events: true },
       orderBy: { created_at: 'desc' },
     });

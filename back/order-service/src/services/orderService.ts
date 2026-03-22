@@ -34,8 +34,7 @@ export class OrderService {
     };
   }
 
-  async publishOrderEvent(orderData: CreateOrderRequest): Promise<void> {
-    const orderId = this.generateOrderId();
+  async publishOrderEvent(orderData: CreateOrderRequest, orderId: string): Promise<void> {
     const orderEvent = this.createOrderEvent(orderData, orderId);
 
     try {
@@ -73,7 +72,7 @@ export class OrderService {
       // Save order to database using Prisma
       const order = await prisma.orders.create({
         data: {
-          id: parseInt(orderId.split('_')[1]), // Extract numeric ID from order string
+          id: orderId,
           user_id: orderData.userId,
           status: 'pending',
           payment_method: orderData.paymentMethod === 'ONLINE_PAYMENT' ? 'ONLINE' : 'COD',
@@ -100,7 +99,7 @@ export class OrderService {
       console.log(`✅ Order saved to database: ${orderId}`);
 
       // Publish order event to Kafka (outbox pattern)
-      await this.publishOrderEvent(orderData);
+      await this.publishOrderEvent(orderData, orderId);
 
       // Generate payment URL for online payment
       let paymentUrl: string | undefined;
@@ -153,7 +152,7 @@ export class OrderService {
     try {
       const order = await prisma.orders.findFirst({
         where: {
-          id: parseInt(orderId.split('_')[1]) // Extract numeric ID from order string
+          id: orderId
         },
         include: {
           order_items: true
@@ -165,9 +164,9 @@ export class OrderService {
       }
 
       const orderResponse: OrderResponse = {
-        orderId: `order_${order.id}`,
+        orderId: order.id,
         userId: order.user_id,
-        items: order.order_items.map(item => ({
+        items: order.order_items.map((item: any) => ({
           productId: `product_${item.product_id}`,
           quantity: item.quantity,
           price: item.price_at_time
@@ -203,10 +202,10 @@ export class OrderService {
         }
       });
 
-      return orders.map(order => ({
-        orderId: `order_${order.id}`,
+      return orders.map((order: any) => ({
+        orderId: order.id,
         userId: order.user_id,
-        items: order.order_items.map(item => ({
+        items: order.order_items.map((item: any) => ({
           productId: `product_${item.product_id}`,
           quantity: item.quantity,
           price: item.price_at_time

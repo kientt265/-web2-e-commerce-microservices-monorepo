@@ -8,7 +8,7 @@ datasource db {
 }
 
 model orders {
-  id               Int           @id @default(autoincrement())
+  id               String        @id @default(cuid())
   user_id          String        @db.Uuid
   status           String        @default("pending") @db.VarChar(50)
   payment_method   payment_method_enum  @default(COD)
@@ -21,7 +21,7 @@ model orders {
 
 model order_items {
   id            Int       @id @default(autoincrement())
-  order_id      Int
+  order_id      String
   product_id    Int
   quantity      Int
   price_at_time Decimal   @db.Decimal(10, 2)

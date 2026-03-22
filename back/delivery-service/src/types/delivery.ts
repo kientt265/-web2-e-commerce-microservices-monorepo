@@ -8,7 +8,7 @@ export interface DeliveryQueryParams {
 }
 
 export interface CreateDeliveryData {
-  order_id: number;
+  order_id: string;
   user_id?: string;
   product_id?: string;
   carrier?: string;
@@ -115,17 +115,14 @@ export const DeliveryValidationUtils = {
   },
 
   /**
-   * Order service publishes `order_<dbId>` (e.g. order_83172184); API may also use plain numeric strings.
+   * Order service publishes order IDs as strings (e.g. order_45045775 or cuid strings)
    */
-  validateOrderId(id: string): number {
+  validateOrderId(id: string): string {
     const trimmed = String(id).trim();
-    const fromPrefix = /^order_(\d+)$/i.exec(trimmed);
-    const raw = fromPrefix ? fromPrefix[1] : trimmed;
-    const parsedId = this.parseId(raw);
-    if (!parsedId) {
+    if (!trimmed) {
       throw new DeliveryValidationError('Invalid order ID');
     }
-    return parsedId;
+    return trimmed;
   },
 
   validateShippingFee(fee: unknown): Prisma.Decimal | null {
