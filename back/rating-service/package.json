@@ -1,7 +1,7 @@
 {
   "name": "back",
   "version": "1.0.0",
-  "description": "Chat microservice for chat application",
+  "description": "Rating microservice for e-commerce application",
   "main": "index.js",
   "scripts": {
     "start": "node dist/index.js",
