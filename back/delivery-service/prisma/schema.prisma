@@ -10,6 +10,8 @@ datasource db {
 model deliveries {
   id               Int            @id @default(autoincrement())
   order_id         Int
+  user_id          String?        @db.Uuid
+  product_id       String?
   tracking_code    String?        @unique
   carrier          String?
   status           DeliveryStatus @default(PENDING)

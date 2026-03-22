@@ -65,6 +65,8 @@ export class DeliveryService {
   async createDelivery(data: CreateDeliveryData) {
     const {
       order_id,
+      user_id,
+      product_id,
       carrier,
       shipping_address,
       city,
@@ -86,6 +88,8 @@ export class DeliveryService {
     const delivery = await prisma.deliveries.create({
       data: {
         order_id: orderId,
+        user_id: user_id || null,
+        product_id: product_id || null,
         carrier,
         shipping_address,
         city,
@@ -159,6 +163,8 @@ export class DeliveryService {
           deliveryId,
           orderId: delivery.order_id,
           status: resolvedStatus,
+          userId: delivery.user_id,
+          productId: delivery.product_id,
         });
         return delivery;
       });
@@ -227,6 +233,8 @@ export class DeliveryService {
           deliveryId,
           orderId: delivery.order_id,
           status: deliveryStatus,
+          userId: delivery.user_id,
+          productId: delivery.product_id,
         });
       }
 
@@ -249,8 +257,12 @@ export class DeliveryService {
       }
 
       // Create new delivery from order event
+      const firstItem = Array.isArray(orderEvent.items) ? orderEvent.items[0] : undefined;
       const deliveryData: CreateDeliveryData = {
         order_id: orderId,
+        user_id: typeof orderEvent.userId === 'string' ? orderEvent.userId : undefined,
+        product_id:
+          firstItem && typeof firstItem.productId === 'string' ? firstItem.productId : undefined,
         shipping_address: orderEvent.shippingAddress?.street || '',
         city: orderEvent.shippingAddress?.city,
         district: orderEvent.shippingAddress?.state,

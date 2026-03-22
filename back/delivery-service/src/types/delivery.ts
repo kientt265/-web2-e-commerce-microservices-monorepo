@@ -9,6 +9,8 @@ export interface DeliveryQueryParams {
 
 export interface CreateDeliveryData {
   order_id: number;
+  user_id?: string;
+  product_id?: string;
   carrier?: string;
   shipping_address: string;
   city?: string;

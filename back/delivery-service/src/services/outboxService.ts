@@ -17,6 +17,8 @@ export async function saveDeliveryOutcomeOutbox(
     deliveryId: number;
     orderId: number;
     status: OutcomeStatus;
+    userId?: string | null;
+    productId?: string | null;
   }
 ): Promise<void> {
   const eventType = DELIVERY_OUTBOX_EVENT[params.status];
@@ -31,6 +33,8 @@ export async function saveDeliveryOutcomeOutbox(
         deliveryId: params.deliveryId,
         orderId: orderIdStr,
         orderIdNumeric: params.orderId,
+        userId: params.userId ?? null,
+        productId: params.productId ?? null,
         status: params.status,
         timestamp: new Date().toISOString(),
       },
