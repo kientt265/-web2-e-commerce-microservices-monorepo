@@ -43,9 +43,7 @@ export class VNPayService {
       vnp_BankCode: request.bankCode,
       vnp_OrderType: ProductCode.Other,
       vnp_Locale: VnpLocale.VN,
-      vnp_ReturnUrl:
-        process.env.VNPAY_RETURN_URL ||
-        'http://localhost:3008/api/payments/vnpay-return',
+      vnp_ReturnUrl:'http://localhost:3008/api/payments/vnpay-return',
     });
   //   const tomorrow = new Date();
   //   tomorrow.setDate(tomorrow.getDate() + 1);
