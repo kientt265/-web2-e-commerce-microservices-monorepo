@@ -67,6 +67,7 @@ export class DeliveryService {
       order_id,
       user_id,
       product_id,
+      quantity,
       carrier,
       shipping_address,
       city,
@@ -90,6 +91,7 @@ export class DeliveryService {
         order_id: orderId,
         user_id: user_id || null,
         product_id: product_id || null,
+        quantity: quantity || null,
         carrier,
         shipping_address,
         city,
@@ -125,6 +127,7 @@ export class DeliveryService {
       cancelled_at,
       shipping_fee,
       notes,
+      quantity,
     } = data;
 
     const updateData: any = { updated_at: new Date() };
@@ -151,6 +154,7 @@ export class DeliveryService {
       updateData.shipping_fee = fee;
     }
     if (notes !== undefined) updateData.notes = notes;
+    if (quantity !== undefined) updateData.quantity = quantity;
 
     if (resolvedStatus === 'DELIVERED' || resolvedStatus === 'FAILED') {
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -165,6 +169,7 @@ export class DeliveryService {
           status: resolvedStatus,
           userId: delivery.user_id,
           productId: delivery.product_id,
+          quantity: delivery.quantity,
         });
         return delivery;
       });
@@ -235,6 +240,7 @@ export class DeliveryService {
           status: deliveryStatus,
           userId: delivery.user_id,
           productId: delivery.product_id,
+          quantity: delivery.quantity,
         });
       }
 
@@ -263,6 +269,7 @@ export class DeliveryService {
         user_id: typeof orderEvent.userId === 'string' ? orderEvent.userId : undefined,
         product_id:
           firstItem && typeof firstItem.productId === 'string' ? firstItem.productId : undefined,
+        quantity: firstItem && typeof firstItem.quantity === 'number' ? firstItem.quantity : undefined,
         shipping_address: orderEvent.shippingAddress?.street || '',
         city: orderEvent.shippingAddress?.city,
         district: orderEvent.shippingAddress?.state,

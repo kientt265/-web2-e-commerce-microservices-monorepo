@@ -11,6 +11,7 @@ export interface CreateDeliveryData {
   order_id: string;
   user_id?: string;
   product_id?: string;
+  quantity?: number;
   carrier?: string;
   shipping_address: string;
   city?: string;
@@ -36,6 +37,7 @@ export interface UpdateDeliveryData {
   cancelled_at?: string;
   shipping_fee?: string | number;
   notes?: string;
+  quantity?: number;
 }
 
 export interface UpdateStatusData {

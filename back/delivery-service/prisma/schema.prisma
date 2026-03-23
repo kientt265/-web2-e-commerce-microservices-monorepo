@@ -12,6 +12,7 @@ model deliveries {
   order_id         String
   user_id          String?        @db.Uuid
   product_id       String?
+  quantity         Int?
   tracking_code    String?        @unique
   carrier          String?
   status           DeliveryStatus @default(PENDING)
