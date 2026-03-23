@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
-import { ORDER_EVENTS } from '../constants/orderEvents';
-import { OrderEvent, InventoryTransaction } from '../types/inventory';
+import { ORDER_EVENTS, DELIVERY_EVENTS } from '../constants/orderEvents';
+import { OrderEvent, DeliveryEvent, InventoryTransaction } from '../types/inventory';
 //TODO: Chưa check lại quantity available -> lỗi -> saga pattern
 //TODO: Chưa handle việc quá 15p EXPIRED transaction
 //TODO: Nhận message từ payment để update status payment_status
@@ -23,6 +23,59 @@ export class InventoryService {
       console.log(`🎉 Successfully processed order event: ${orderEvent.eventType} for order ${orderEvent.orderId}`);
     } catch (error) {
       console.error(`❌ Error processing order event ${orderEvent.eventType} for order ${orderEvent.orderId}:`, error);
+      throw error;
+    }
+  }
+
+  async processDeliveryEvent(deliveryEvent: DeliveryEvent): Promise<void> {
+    try {
+      console.log(`🚚 Processing delivery event: ${deliveryEvent.eventType} for order ${deliveryEvent.orderId}`);
+      console.log(`📦 Product: ${deliveryEvent.productId}, Quantity: ${deliveryEvent.quantity}`);
+
+      // Find inventory for this product
+      const inventory = await this.findInventoryByProductId(deliveryEvent.productId);
+      
+      if (!inventory) {
+        console.error(`❌ No inventory found for product ${deliveryEvent.productId}`);
+        return;
+      }
+
+      console.log(`✅ Found inventory for product ${deliveryEvent.productId}, ID: ${inventory.id}`);
+      console.log(`📊 Current inventory - Total: ${inventory.quantity}, Reserved Shipping: ${inventory.reserved_shipping}`);
+
+      if (deliveryEvent.eventType === DELIVERY_EVENTS.DELIVERY_DELIVERED) {
+        // Giao thành công: trừ cả reserved_shipping và tổng quantity
+        console.log(`✅ Delivery successful - Reducing reserved_shipping and total quantity`);
+        
+        await this.prisma.inventories.update({
+          where: { id: inventory.id },
+          data: {
+            reserved_shipping: { decrement: deliveryEvent.quantity },
+            quantity: { decrement: deliveryEvent.quantity },
+            updated_at: new Date()
+          }
+        });
+        
+        console.log(`✅ Updated inventory - Reserved shipping: ${inventory.reserved_shipping - deliveryEvent.quantity}, Total quantity: ${inventory.quantity - deliveryEvent.quantity}`);
+        
+      } else if (deliveryEvent.eventType === DELIVERY_EVENTS.DELIVERY_FAILED) {
+        // Giao thất bại: chỉ trừ reserved_shipping
+        console.log(`❌ Delivery failed - Only reducing reserved_shipping`);
+        
+        await this.prisma.inventories.update({
+          where: { id: inventory.id },
+          data: {
+            reserved_shipping: { decrement: deliveryEvent.quantity },
+            updated_at: new Date()
+          }
+        });
+        
+        console.log(`✅ Updated inventory - Reserved shipping: ${inventory.reserved_shipping - deliveryEvent.quantity}, Total quantity unchanged: ${inventory.quantity}`);
+      }
+
+      console.log(`🎉 Successfully processed delivery event: ${deliveryEvent.eventType} for order ${deliveryEvent.orderId}`);
+    } catch (error) {
+      console.error(`❌ Error processing delivery event ${deliveryEvent.eventType} for order ${deliveryEvent.orderId}:`, error);
       throw error;
     }
   }

@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
 import inventoryRoutes from './routes/inventoryRoutes';
 import { openApiSpec } from './openapi';
-import { connectConsumer, disconnectConsumer, subscribeToOrderEvents } from './config/kafka';
+import { connectConsumer, disconnectConsumer, subscribeToOrderEvents, subscribeToDeliveryEvents } from './config/kafka';
 import { InventoryService } from './services/inventoryService';
 import { KafkaConsumerService } from './services/kafkaConsumerService';
 
@@ -81,6 +81,7 @@ app.listen(port, async () => {
   try {
     await connectConsumer();
     await subscribeToOrderEvents();
+    await subscribeToDeliveryEvents();
     
     const inventoryService = new InventoryService(prisma);
     kafkaConsumerService = new KafkaConsumerService(inventoryService);

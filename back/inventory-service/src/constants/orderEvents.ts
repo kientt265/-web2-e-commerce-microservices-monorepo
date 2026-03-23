@@ -3,4 +3,10 @@ export const ORDER_EVENTS = {
   ORDER_CREATED_CASH_ON_DELIVERY: 'ORDER_CREATED_CASH_ON_DELIVERY',
 } as const;
 
+export const DELIVERY_EVENTS = {
+  DELIVERY_DELIVERED: 'DELIVERY_DELIVERED',
+  DELIVERY_FAILED: 'DELIVERY_FAILED',
+} as const;
+
 export type OrderEventType = typeof ORDER_EVENTS[keyof typeof ORDER_EVENTS];
+export type DeliveryEventType = typeof DELIVERY_EVENTS[keyof typeof DELIVERY_EVENTS];
