@@ -9,6 +9,8 @@ const CART_API_BASE =
   (import.meta as any).env?.VITE_CART_API_URL || 'http://localhost:3004';
 const ORDER_API_BASE =
   (import.meta as any).env?.VITE_ORDER_API_URL || 'http://localhost:3003';
+const DELIVERY_API_BASE =
+  (import.meta as any).env?.VITE_DELIVERY_API_URL || 'http://localhost:3006';
 
 import type { Product } from './api/product';
 import type { OrderItem } from './api/order';
@@ -23,6 +25,7 @@ import { PaymentSuccess } from './components/PaymentSuccess';
 import { useAuth } from './hooks/useAuth';
 import { useCart } from './hooks/useCart';
 import { useOrders } from './hooks/useOrders';
+import { useDeliveries } from './hooks/useDeliveries';
 import { useProducts } from './hooks/useProducts';
 
 type Page = 'shop' | 'payment-success';
@@ -43,6 +46,12 @@ function App() {
   const productsState = useProducts(PRODUCT_API_BASE);
   const cart = useCart(CART_API_BASE, auth.cartUserId, log);
   const orders = useOrders(ORDER_API_BASE, auth.cartUserId, log);
+  const deliveries = useDeliveries({
+    // baseUrl: DELIVERY_API_BASE,
+    baseUrl: 'http://localhost:3006',
+    userId: auth.cartUserId,
+    onLog: log,
+  });
 
   const [search, setSearch] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | 'all'>('all');
@@ -253,6 +262,16 @@ function App() {
         loading={orders.loading}
         error={orders.error}
         onViewOrderDetail={handleViewOrderDetail}
+        // Delivery props
+        deliveries={deliveries.deliveries}
+        deliveryLoading={deliveries.loading}
+        deliveryError={deliveries.error}
+        onLoadDeliveriesByOrderId={deliveries.loadDeliveriesByOrderId}
+        onRefreshDelivery={() => {
+          if (orders.currentOrder) {
+            void deliveries.loadDeliveriesByOrderId(orders.currentOrder.orderId);
+          }
+        }}
       />
 
       <AuthModal

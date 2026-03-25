@@ -48,10 +48,6 @@ export function Topbar({
         onNotReady('inventory-service');
         console.log('[inventory-service] chưa handle');
         break;
-      case 'delivery':
-        onNotReady('delivery-service');
-        console.log('[delivery-service] chưa handle');
-        break;
       case 'ratings':
         onNotReady('rating-service');
         console.log('[rating-service] chưa handle');
@@ -102,9 +98,6 @@ export function Topbar({
                 <span className="dropdown-label">Đơn hàng</span>
                 <button type="button" className="dropdown-item" onClick={() => handleMenuClick('orders')}>
                   📋 Lịch sử đơn hàng
-                </button>
-                <button type="button" className="dropdown-item" onClick={() => handleMenuClick('delivery')}>
-                  🚚 Theo dõi giao hàng
                 </button>
               </div>
               <div className="dropdown-divider" />

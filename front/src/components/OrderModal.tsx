@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { Order, OrderItem, ShippingAddress } from '../api/order';
 import { formatOrderStatus, formatPaymentStatus, getStatusColor } from '../api/order';
+import type { Delivery } from '../api/delivery';
+import { formatDeliveryStatus, getDeliveryStatusColor, getDeliveryStatusIcon } from '../api/delivery';
 import { formatMoney } from '../utils/money';
 
 type OrderModalProps = {
@@ -21,6 +23,12 @@ type OrderModalProps = {
   error?: string | null;
   onViewOrderDetail?: (order: Order) => void;
   onGoToPayment?: (paymentUrl: string) => void;
+  // Delivery props
+  deliveries?: Delivery[];
+  deliveryLoading?: boolean;
+  deliveryError?: string | null;
+  onLoadDeliveriesByOrderId?: (orderId: string) => Promise<Delivery[]>;
+  onRefreshDelivery?: () => void;
 };
 
 const defaultAddress: ShippingAddress = {
@@ -44,6 +52,12 @@ export function OrderModal({
   error = null,
   onViewOrderDetail,
   onGoToPayment,
+  // Delivery props
+  deliveries = [],
+  deliveryLoading = false,
+  deliveryError = null,
+  onLoadDeliveriesByOrderId,
+  onRefreshDelivery,
 }: OrderModalProps) {
   const [address, setAddress] = useState<ShippingAddress>(defaultAddress);
   const [paymentMethod, setPaymentMethod] = useState<'ONLINE_PAYMENT' | 'CASH_ON_DELIVERY'>('ONLINE_PAYMENT');
@@ -68,6 +82,14 @@ export function OrderModal({
     setAddress(defaultAddress);
     setPaymentMethod('ONLINE_PAYMENT');
     onClose();
+  };
+
+  const handleViewOrderDetail = (order: Order) => {
+    onViewOrderDetail?.(order);
+    // Load deliveries for this order
+    if (onLoadDeliveriesByOrderId) {
+      void onLoadDeliveriesByOrderId(order.orderId);
+    }
   };
 
   const handleGoToPayment = () => {
@@ -223,7 +245,7 @@ export function OrderModal({
             <div
               key={order.orderId}
               className="order-card"
-              onClick={() => onViewOrderDetail?.(order)}
+              onClick={() => handleViewOrderDetail(order)}
             >
               <div className="order-header">
                 <span className="order-id">{order.orderId}</span>
@@ -309,6 +331,57 @@ export function OrderModal({
             </span>
           </p>
         </div>
+
+        {deliveryLoading && (
+          <div className="detail-section">
+            <h5>🚚 Thông tin vận chuyển</h5>
+            <div className="muted">Đang tải...</div>
+          </div>
+        )}
+
+        {deliveryError && (
+          <div className="detail-section">
+            <h5>🚚 Thông tin vận chuyển</h5>
+            <div className="notice error">{deliveryError}</div>
+          </div>
+        )}
+
+        {deliveries.length > 0 && (
+          <div className="detail-section">
+            <h5>🚚 Thông tin vận chuyển</h5>
+            {deliveries.map((delivery) => (
+              <div key={delivery.id} className="delivery-info-card">
+                <div className="delivery-status-row">
+                  <span
+                    className="delivery-status-badge"
+                    style={{ backgroundColor: getDeliveryStatusColor(delivery.status) }}
+                  >
+                    {getDeliveryStatusIcon(delivery.status)} {formatDeliveryStatus(delivery.status)}
+                  </span>
+                  {delivery.tracking_code && (
+                    <span className="tracking-code">Mã: {delivery.tracking_code}</span>
+                  )}
+                </div>
+                {delivery.carrier && (
+                  <p className="delivery-carrier">
+                    <strong>Đơn vị vận chuyển:</strong> {delivery.carrier}
+                  </p>
+                )}
+                {delivery.estimated_at && (
+                  <p className="delivery-estimated">
+                    <strong>Dự kiến giao:</strong>{' '}
+                    {new Date(delivery.estimated_at).toLocaleDateString('vi-VN')}
+                  </p>
+                )}
+              </div>
+            ))}
+            {onRefreshDelivery && (
+              <button type="button" className="ghost small" onClick={onRefreshDelivery}>
+                🔄 Làm mới
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="detail-meta">
           <p className="muted small">
