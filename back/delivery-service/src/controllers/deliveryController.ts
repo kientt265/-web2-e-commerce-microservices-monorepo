@@ -70,6 +70,19 @@ export async function deleteDelivery(req: Request, res: Response) {
   }
 }
 
+export async function getDeliveriesByUserId(req: Request, res: Response) {
+  try {
+    const deliveries = await deliveryService.getDeliveriesByUserId(req.params.userId);
+    return res.status(200).json(deliveries);
+  } catch (err) {
+    console.error('getDeliveriesByUserId error:', err);
+    if (err instanceof DeliveryValidationError) {
+      return res.status(400).json({ error: err.message });
+    }
+    return res.status(500).json({ error: 'Failed to fetch deliveries for user' });
+  }
+}
+
 export async function getDeliveriesByOrderId(req: Request, res: Response) {
   try {
     const deliveries = await deliveryService.getDeliveriesByOrderId(req.params.orderId);

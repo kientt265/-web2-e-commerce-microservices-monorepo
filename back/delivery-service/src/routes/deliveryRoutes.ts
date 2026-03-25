@@ -5,6 +5,7 @@ import {
   createDelivery,
   updateDelivery,
   deleteDelivery,
+  getDeliveriesByUserId,
   getDeliveriesByOrderId,
   updateDeliveryStatus,
 } from '../controllers/deliveryController';
@@ -21,6 +22,7 @@ router.put('/deliveries/:id', updateDelivery);
 router.delete('/deliveries/:id', deleteDelivery);
 
 // Additional delivery endpoints
+router.get('/users/:userId/deliveries', getDeliveriesByUserId);
 router.get('/orders/:orderId/deliveries', getDeliveriesByOrderId);
 router.patch('/deliveries/:id/status', updateDeliveryStatus);
 

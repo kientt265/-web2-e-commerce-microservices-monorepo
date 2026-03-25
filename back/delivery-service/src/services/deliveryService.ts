@@ -241,6 +241,21 @@ export class DeliveryService {
     });
   }
 
+  async getDeliveriesByUserId(userIdParam: string) {
+    const userId = userIdParam.trim();
+    if (!userId) {
+      throw new DeliveryValidationError('Invalid user ID');
+    }
+
+    const deliveries = await prisma.deliveries.findMany({
+      where: { user_id: userId },
+      include: { delivery_events: true },
+      orderBy: { created_at: 'desc' },
+    });
+
+    return deliveries;
+  }
+
   async getDeliveriesByOrderId(orderIdParam: string) {
     const orderId = DeliveryValidationUtils.validateOrderId(orderIdParam);
 

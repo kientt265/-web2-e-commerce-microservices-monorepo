@@ -131,13 +131,27 @@ export const openApiSpec = {
       },
     },
     '/orders/{orderId}/deliveries': {
-      parameters: [{ name: 'orderId', in: 'path', required: true, schema: { type: 'integer', minimum: 1 } }],
+      parameters: [{ name: 'orderId', in: 'path', required: true, schema: { type: 'string' } }],
       get: {
         tags: ['Delivery'],
         summary: 'Get deliveries by order ID',
         responses: {
           '200': {
             description: 'Deliveries for order',
+            content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Delivery' } } } },
+          },
+          '400': { $ref: '#/components/responses/BadRequest' },
+        },
+      },
+    },
+    '/users/{userId}/deliveries': {
+      parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' }, description: 'User UUID' }],
+      get: {
+        tags: ['Delivery'],
+        summary: 'Get deliveries by user ID',
+        responses: {
+          '200': {
+            description: 'Deliveries for user',
             content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Delivery' } } } },
           },
           '400': { $ref: '#/components/responses/BadRequest' },
