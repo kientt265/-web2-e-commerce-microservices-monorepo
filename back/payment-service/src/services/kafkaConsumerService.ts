@@ -23,16 +23,28 @@ export class KafkaConsumerService {
     try {
       await consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
-          if (topic !== 'outbox.order') return;
+          console.log(`🔔 Received message from topic: ${topic}, partition: ${partition}`);
+          
+          if (topic !== 'outbox.order') {
+            console.log(`❌ Ignoring topic: ${topic}`);
+            return;
+          }
 
           try {
-            const debeziumMessage = JSON.parse(message.value?.toString() || '{}');
+            const rawMessage = message.value?.toString() || '{}';
+            console.log('📨 Raw Kafka message:', rawMessage);
+            
+            const debeziumMessage = JSON.parse(rawMessage);
+            console.log('📋 Debezium message:', debeziumMessage);
+            
             const orderEvent = JSON.parse(debeziumMessage.payload || '{}') as OrderEvent;
+            console.log('🛒 Parsed order event:', orderEvent);
 
             // if (orderEvent.eventType === ORDER_EVENTS.ORDER_CREATED_ONLINE_PAYMENT) {
             //   await this.paymentService.createPendingPaymentFromOrderEvent(orderEvent);
             // }
             await this.paymentService.createPendingPaymentFromOrderEvent(orderEvent);
+            console.log('✅ Payment record created successfully');
           } catch (error) {
             console.error('❌ Error processing Kafka message in payment-service:', error);
             console.error('Message value:', message.value?.toString());

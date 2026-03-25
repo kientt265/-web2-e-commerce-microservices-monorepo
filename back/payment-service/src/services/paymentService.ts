@@ -1,5 +1,6 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import type { PaymentMethod, PaymentStatus } from '@prisma/client';
+import { savePaymentCompletedOutbox, savePaymentFailedOutbox } from './outboxService';
 
 const prisma = new PrismaClient();
 
@@ -29,6 +30,8 @@ export class PaymentService {
   }
 
   async createPendingPaymentFromOrderEvent(orderEvent: OrderEvent): Promise<void> {
+    console.log('🔧 Creating payment from order event:', orderEvent);
+    
     // Only create payment for online orders.
     //if (orderEvent.paymentMethod !== 'ONLINE_PAYMENT') return;
 
@@ -39,11 +42,16 @@ export class PaymentService {
       return;
     }
 
+    console.log(`🔍 Checking if payment exists for orderId: ${orderEvent.orderId}`);
     const exists = await prisma.payments.findUnique({
       where: { order_id: orderEvent.orderId },
     });
-    if (exists) return;
+    if (exists) {
+      console.log(`⚠️ Payment already exists for orderId: ${orderEvent.orderId}`);
+      return;
+    }
 
+    console.log(`💾 Creating new payment record for orderId: ${orderEvent.orderId}`);
     await prisma.payments.create({
       data: {
         order_id: orderEvent.orderId,
@@ -53,39 +61,63 @@ export class PaymentService {
         status: 'PENDING' as PaymentStatus,
       },
     });
+    console.log(`✅ Payment record created successfully for orderId: ${orderEvent.orderId}`);
   }
 
   async handleGatewayResult(result: GatewayResult): Promise<void> {
-    const payment = await prisma.payments.findUnique({
-      where: { order_id: result.orderId },
-    });
+    return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const payment = await tx.payments.findUnique({
+        where: { order_id: result.orderId },
+      });
 
-    if (!payment) {
-      throw new Error(`Payment record not found for orderId=${result.orderId}`);
-    }
-
-    // Validate amount when possible (helps prevent tampering / mismatch).
-    if (result.amount !== undefined) {
-      const expected = Number(payment.amount);
-      const received = Number(result.amount);
-      if (Number.isFinite(expected) && Number.isFinite(received) && expected !== received) {
-        throw new Error(`Payment amount mismatch for orderId=${result.orderId}`);
+      if (!payment) {
+        throw new Error(`Payment record not found for orderId=${result.orderId}`);
       }
-    }
 
-    const paymentStatus: PaymentStatus = result.isSuccess ? 'COMPLETED' : 'FAILED';
-    const paidAt = result.isSuccess ? new Date() : null;
-    const failedAt = result.isSuccess ? null : new Date();
+      // Validate amount when possible (helps prevent tampering / mismatch).
+      if (result.amount !== undefined) {
+        const expected = Number(payment.amount);
+        const received = Number(result.amount);
+        if (Number.isFinite(expected) && Number.isFinite(received) && expected !== received) {
+          throw new Error(`Payment amount mismatch for orderId=${result.orderId}`);
+        }
+      }
 
-    await prisma.payments.update({
-      where: { order_id: result.orderId },
-      data: {
+      const paymentStatus: PaymentStatus = result.isSuccess ? 'COMPLETED' : 'FAILED';
+      const paidAt = result.isSuccess ? new Date() : null;
+      const failedAt = result.isSuccess ? null : new Date();
+
+      const updatedPayment = await tx.payments.update({
+        where: { order_id: result.orderId },
+        data: {
+          status: paymentStatus,
+          gateway_response: result.gatewayResponse,
+          transaction_id: result.transactionId,
+          paid_at: paidAt,
+          failed_at: failedAt,
+        },
+      });
+
+      // Save outbox event for other services
+      const outboxData = {
+        paymentId: updatedPayment.id,
+        orderId: result.orderId,
+        userId: payment.user_id,
+        amount: Number(payment.amount),
+        paymentMethod: payment.payment_method,
+        transactionId: result.transactionId,
         status: paymentStatus,
-        gateway_response: result.gatewayResponse,
-        transaction_id: result.transactionId,
-        paid_at: paidAt,
-        failed_at: failedAt,
-      },
+      };
+
+      if (result.isSuccess) {
+        await savePaymentCompletedOutbox(tx, outboxData);
+        console.log(`✅ Payment completed outbox event saved for order ${result.orderId}`);
+      } else {
+        await savePaymentFailedOutbox(tx, outboxData);
+        console.log(`❌ Payment failed outbox event saved for order ${result.orderId}`);
+      }
+
+      console.log(`✅ Payment status updated: ${result.orderId} → ${paymentStatus}`);
     });
   }
 
