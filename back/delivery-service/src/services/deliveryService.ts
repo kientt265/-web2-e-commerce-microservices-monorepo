@@ -62,6 +62,55 @@ export class DeliveryService {
     return delivery;
   }
 
+  async createDeliveryWithStatus(data: CreateDeliveryData, status: DeliveryStatus = 'PENDING') {
+    const {
+      order_id,
+      user_id,
+      product_id,
+      quantity,
+      carrier,
+      shipping_address,
+      city,
+      district,
+      ward,
+      postcode,
+      estimated_at,
+      shipping_fee,
+      notes,
+    } = data;
+
+    if (!order_id || !shipping_address) {
+      throw new DeliveryValidationError('order_id and shipping_address are required');
+    }
+
+    const orderId = DeliveryValidationUtils.validateOrderId(order_id.toString());
+    const shippingFee = shipping_fee ? DeliveryValidationUtils.parseDecimal(shipping_fee) : null;
+
+    const delivery = await prisma.deliveries.create({
+      data: {
+        order_id: orderId,
+        user_id: user_id || null,
+        product_id: product_id || null,
+        quantity: quantity || null,
+        carrier,
+        shipping_address,
+        city,
+        district,
+        ward,
+        postcode,
+        estimated_at: estimated_at ? new Date(estimated_at) : null,
+        shipping_fee: shippingFee,
+        notes,
+        status, // Use provided status instead of default
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      include: { delivery_events: true },
+    });
+
+    return delivery;
+  }
+
   async createDelivery(data: CreateDeliveryData) {
     const {
       order_id,
@@ -248,7 +297,7 @@ export class DeliveryService {
     });
   }
 
-  async processOrderEvent(orderEvent: any) {
+  async processOrderEvent(orderEvent: any, initialStatus: DeliveryStatus = 'PENDING') {
     try {
       const orderId = DeliveryValidationUtils.validateOrderId(orderEvent.orderId);
       
@@ -274,10 +323,10 @@ export class DeliveryService {
         city: orderEvent.shippingAddress?.city,
         district: orderEvent.shippingAddress?.state,
         postcode: orderEvent.shippingAddress?.zipCode,
-        notes: `Auto-created for cash on delivery order ${orderId}`,
+        notes: `Auto-created for ${orderEvent.paymentMethod?.toLowerCase().replace('_', ' ')} order ${orderId}`,
       };
 
-      const delivery = await this.createDelivery(deliveryData);
+      const delivery = await this.createDeliveryWithStatus(deliveryData, initialStatus);
       console.log(`✅ Created delivery ${delivery.id} for order ${orderId}`);
       
       return delivery;

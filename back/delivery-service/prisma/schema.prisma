@@ -59,6 +59,7 @@ model outbox {
 }
 
 enum DeliveryStatus {
+  AWAITING_PAYMENT
   PENDING
   PROCESSING
   PICKED_UP

@@ -35,17 +35,15 @@ export class KafkaConsumerService {
             console.log(`Payment method: ${orderEvent.paymentMethod}`);
             console.log(`Items count: ${orderEvent.items?.length || 0}`);
             
-            // Skip online payment orders
-            if (orderEvent.paymentMethod === 'ONLINE_PAYMENT') {
-              console.log(`⏭️ Skipping online payment order: ${orderEvent.orderId}`);
-              return;
-            }
-            
-            // Process only cash on delivery orders
+            // Process both cash on delivery and online payment orders
             if (orderEvent.paymentMethod === 'CASH_ON_DELIVERY') {
               console.log(`💰 Processing cash on delivery order: ${orderEvent.orderId}`);
-              await this.deliveryService.processOrderEvent(orderEvent);
-              console.log(`✅ Successfully processed order event for order ${orderEvent.orderId}`);
+              await this.deliveryService.processOrderEvent(orderEvent, 'PENDING');
+              console.log(`✅ Successfully processed COD order event for order ${orderEvent.orderId}`);
+            } else if (orderEvent.paymentMethod === 'ONLINE_PAYMENT') {
+              console.log(`� Processing online payment order: ${orderEvent.orderId}`);
+              await this.deliveryService.processOrderEvent(orderEvent, 'AWAITING_PAYMENT');
+              console.log(`✅ Successfully processed online payment order event for order ${orderEvent.orderId}`);
             } else {
               console.log(`❌ Unknown payment method: ${orderEvent.paymentMethod}`);
             }
