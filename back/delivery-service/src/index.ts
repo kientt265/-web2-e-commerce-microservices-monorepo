@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
 import deliveryRoutes from './routes/deliveryRoutes';
 import { openApiSpec } from './openapi';
-import { connectConsumer, disconnectConsumer, subscribeToOrderEvents } from './config/kafka';
+import { connectConsumer, disconnectConsumer, subscribeToOrderEvents, subscribeToPaymentEvents } from './config/kafka';
 import { deliveryService } from './services/deliveryService';
 import { KafkaConsumerService } from './services/kafkaConsumerService';
 
@@ -80,6 +80,7 @@ app.listen(port, async () => {
   try {
     await connectConsumer();
     await subscribeToOrderEvents();
+    await subscribeToPaymentEvents();
     kafkaConsumerService = new KafkaConsumerService(deliveryService);
     await kafkaConsumerService.startConsumer();
     console.log('Kafka consumer service started successfully');

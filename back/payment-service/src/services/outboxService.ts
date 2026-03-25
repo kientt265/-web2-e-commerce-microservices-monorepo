@@ -29,6 +29,7 @@ export const savePaymentCompletedOutbox = async (
     id: generateUUID(), // ✅ Proper UUID format
     event_type: 'PAYMENT_COMPLETED',
     payload: {
+      event_type: 'PAYMENT_COMPLETED', // ← Thêm field này
       paymentId: data.paymentId,
       orderId: data.orderId,
       userId: data.userId,
@@ -56,6 +57,7 @@ export const savePaymentFailedOutbox = async (
     id: generateUUID(), // ✅ Proper UUID format
     event_type: 'PAYMENT_FAILED',
     payload: {
+      event_type: 'PAYMENT_FAILED', // ← Thêm field này
       paymentId: data.paymentId,
       orderId: data.orderId,
       userId: data.userId,

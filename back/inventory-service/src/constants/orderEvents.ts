@@ -8,5 +8,10 @@ export const DELIVERY_EVENTS = {
   DELIVERY_FAILED: 'DELIVERY_FAILED',
 } as const;
 
+export const PAYMENT_EVENTS = {
+  PAYMENT_COMPLETED: 'PAYMENT_COMPLETED',
+} as const;
+
 export type OrderEventType = typeof ORDER_EVENTS[keyof typeof ORDER_EVENTS];
 export type DeliveryEventType = typeof DELIVERY_EVENTS[keyof typeof DELIVERY_EVENTS];
+export type PaymentEventType = typeof PAYMENT_EVENTS[keyof typeof PAYMENT_EVENTS];

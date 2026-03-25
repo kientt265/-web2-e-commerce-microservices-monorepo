@@ -297,6 +297,49 @@ export class DeliveryService {
     });
   }
 
+  async updateDeliveryStatusFromPayment(orderId: string, newStatus: DeliveryStatus): Promise<void> {
+    try {
+      const orderIdValid = DeliveryValidationUtils.validateOrderId(orderId);
+      
+      // Find delivery for this order
+      const delivery = await prisma.deliveries.findFirst({
+        where: { order_id: orderIdValid },
+      });
+
+      if (!delivery) {
+        console.log(`⚠️ No delivery found for order ${orderIdValid}`);
+        return;
+      }
+
+      console.log(`🔄 Updating delivery ${delivery.id} status from ${delivery.status} to ${newStatus}`);
+      
+      // Update delivery status
+      const updatedDelivery = await prisma.deliveries.update({
+        where: { id: delivery.id },
+        data: {
+          status: newStatus,
+          updated_at: new Date(),
+        },
+        include: { delivery_events: true },
+      });
+
+      // Create delivery event record
+      await prisma.delivery_events.create({
+        data: {
+          delivery_id: delivery.id,
+          status: newStatus,
+          description: `Status updated from payment event: ${newStatus}`,
+          created_at: new Date(),
+        },
+      });
+
+      console.log(`✅ Delivery status updated: ${delivery.id} → ${newStatus}`);
+    } catch (error) {
+      console.error(`❌ Error updating delivery status for order ${orderId}:`, error);
+      throw error;
+    }
+  }
+
   async processOrderEvent(orderEvent: any, initialStatus: DeliveryStatus = 'PENDING') {
     try {
       const orderId = DeliveryValidationUtils.validateOrderId(orderEvent.orderId);

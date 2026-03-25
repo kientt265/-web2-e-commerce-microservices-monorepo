@@ -72,3 +72,15 @@ export interface DeliveryEvent {
   deliveryId: number;
   orderIdNumeric: string;
 }
+
+export interface PaymentEvent {
+  amount: number;
+  status: string;
+  userId: string;
+  orderId: string;
+  paymentId: number;
+  timestamp: string;
+  event_type: string;
+  paymentMethod: string;
+  transactionId: string;
+}

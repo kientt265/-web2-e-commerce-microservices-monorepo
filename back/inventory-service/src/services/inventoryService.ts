@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
-import { ORDER_EVENTS, DELIVERY_EVENTS } from '../constants/orderEvents';
-import { OrderEvent, DeliveryEvent, InventoryTransaction } from '../types/inventory';
+import { ORDER_EVENTS, DELIVERY_EVENTS, PAYMENT_EVENTS } from '../constants/orderEvents';
+import { OrderEvent, DeliveryEvent, PaymentEvent, InventoryTransaction } from '../types/inventory';
 //TODO: Chưa check lại quantity available -> lỗi -> saga pattern
 //TODO: Chưa handle việc quá 15p EXPIRED transaction
 //TODO: Nhận message từ payment để update status payment_status
@@ -23,6 +23,70 @@ export class InventoryService {
       console.log(`🎉 Successfully processed order event: ${orderEvent.eventType} for order ${orderEvent.orderId}`);
     } catch (error) {
       console.error(`❌ Error processing order event ${orderEvent.eventType} for order ${orderEvent.orderId}:`, error);
+      throw error;
+    }
+  }
+
+  async processPaymentEvent(paymentEvent: PaymentEvent): Promise<void> {
+    try {
+      console.log(`💳 Processing payment event: ${paymentEvent.event_type} for order ${paymentEvent.orderId}`);
+      console.log(`📝 Payment status: ${paymentEvent.status}, Payment method: ${paymentEvent.paymentMethod}`);
+
+      // Only process completed payments for online payment
+      if (paymentEvent.event_type !== PAYMENT_EVENTS.PAYMENT_COMPLETED || 
+          paymentEvent.status !== 'COMPLETED' ||
+          paymentEvent.paymentMethod !== 'ONLINE_PAYMENT') {
+        console.log(`⏭️ Ignoring payment event - not a completed online payment`);
+        return;
+      }
+
+      // Find all inventory transactions for this order with PENDING status and ONLINE_PAYMENT method
+      const pendingTransactions = await this.prisma.inventory_transactions.findMany({
+        where: {
+          order_id: paymentEvent.orderId,
+          payment_method: 'ONLINE_PAYMENT',
+          payment_status: 'PENDING'
+        },
+        include: {
+          inventory: true
+        }
+      });
+
+      if (pendingTransactions.length === 0) {
+        console.log(`⚠️ No pending transactions found for order ${paymentEvent.orderId}`);
+        return;
+      }
+
+      console.log(`📦 Found ${pendingTransactions.length} pending transactions to update`);
+
+      // Process each transaction
+      for (const transaction of pendingTransactions) {
+        console.log(`🔄 Updating transaction ${transaction.id} for product ${transaction.inventory.product_id}`);
+        
+        // Update transaction status to PAID
+        await this.prisma.inventory_transactions.update({
+          where: { id: transaction.id },
+          data: { payment_status: 'PAID' }
+        });
+
+        // Update inventory: move from reserved_checkout to reserved_shipping
+        await this.prisma.inventories.update({
+          where: { id: transaction.inventory.id },
+          data: {
+            reserved_checkout: { decrement: transaction.quantity },
+            reserved_shipping: { increment: transaction.quantity },
+            updated_at: new Date()
+          }
+        });
+
+        console.log(`✅ Updated inventory for product ${transaction.inventory.product_id}:`);
+        console.log(`   - Moved ${transaction.quantity} units from reserved_checkout to reserved_shipping`);
+        console.log(`   - Transaction ${transaction.id} status updated to PAID`);
+      }
+
+      console.log(`🎉 Successfully processed payment event for order ${paymentEvent.orderId}`);
+    } catch (error) {
+      console.error(`❌ Error processing payment event for order ${paymentEvent.orderId}:`, error);
       throw error;
     }
   }

@@ -45,3 +45,13 @@ export const subscribeToDeliveryEvents = async () => {
     throw error;
   }
 };
+
+export const subscribeToPaymentEvents = async () => {
+  try {
+    await consumer.subscribe({ topic: 'outbox.payment', fromBeginning: false });
+    console.log('Subscribed to outbox.payment topic');
+  } catch (error) {
+    console.error('Error subscribing to outbox.payment topic:', error);
+    throw error;
+  }
+};
