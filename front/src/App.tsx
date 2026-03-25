@@ -7,17 +7,25 @@ const PRODUCT_API_BASE =
   (import.meta as any).env?.VITE_PRODUCT_API_URL || 'http://localhost:3002';
 const CART_API_BASE =
   (import.meta as any).env?.VITE_CART_API_URL || 'http://localhost:3004';
+const ORDER_API_BASE =
+  (import.meta as any).env?.VITE_ORDER_API_URL || 'http://localhost:3003';
 
 import type { Product } from './api/product';
+import type { OrderItem } from './api/order';
 import { AuthModal } from './components/AuthModal';
 import { CartModal } from './components/CartModal';
 import { ProductGrid } from './components/ProductGrid';
 import { ProductModal } from './components/ProductModal';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
+import { OrderModal } from './components/OrderModal';
+import { PaymentSuccess } from './components/PaymentSuccess';
 import { useAuth } from './hooks/useAuth';
 import { useCart } from './hooks/useCart';
+import { useOrders } from './hooks/useOrders';
 import { useProducts } from './hooks/useProducts';
+
+type Page = 'shop' | 'payment-success';
 
 function App() {
   const [logs, setLogs] = useState<string[]>([]);
@@ -26,12 +34,15 @@ function App() {
     setLogs((prev) => [line, ...prev].slice(0, 25));
   };
 
+  const [page, setPage] = useState<Page>('shop');
+
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
   const auth = useAuth(AUTH_API_BASE, log);
   const productsState = useProducts(PRODUCT_API_BASE);
   const cart = useCart(CART_API_BASE, auth.cartUserId, log);
+  const orders = useOrders(ORDER_API_BASE, auth.cartUserId, log);
 
   const [search, setSearch] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | 'all'>('all');
@@ -39,6 +50,12 @@ function App() {
   const [inStockOnly, setInStockOnly] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
+
+  // Order modal states
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [orderModalMode, setOrderModalMode] = useState<'place' | 'history' | 'detail'>('place');
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+  const [orderTotal, setOrderTotal] = useState(0);
 
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -60,6 +77,92 @@ function App() {
 
   const notReady = (service: string) => log(`[${service}] chưa chuẩn bị xong API`);
 
+  // Handle Buy Now - order 1 product directly
+  const handleBuyNow = (product: Product) => {
+    const item: OrderItem = {
+      productId: product.id.toString(),
+      quantity: 1,
+      price: Number(product.price),
+    };
+    setOrderItems([item]);
+    setOrderTotal(Number(product.price));
+    setOrderModalMode('place');
+    setOrderModalOpen(true);
+    setSelectedProduct(null);
+  };
+
+  // Handle checkout from cart
+  const handleCheckout = () => {
+    const items: OrderItem[] = cart.items.map((cartItem) => ({
+      productId: cartItem.product_id.toString(),
+      quantity: cartItem.quantity,
+      price: Number(cartItem.price_at_added),
+    }));
+    const total = cart.total;
+    setOrderItems(items);
+    setOrderTotal(total);
+    setOrderModalMode('place');
+    setOrderModalOpen(true);
+    setCartOpen(false);
+  };
+
+  // Handle place order
+  const handlePlaceOrder = async (
+    items: OrderItem[],
+    totalAmount: number,
+    shippingAddress: any,
+    paymentMethod: 'ONLINE_PAYMENT' | 'CASH_ON_DELIVERY'
+  ) => {
+    const order = await orders.createOrder(items, totalAmount, shippingAddress, paymentMethod);
+    if (order && order.paymentUrl) {
+      // Redirect to VNPay for online payment
+      window.location.href = order.paymentUrl;
+    }
+    return order;
+  };
+
+  // Handle open order history
+  const handleOpenOrders = () => {
+    setOrderModalMode('history');
+    setOrderModalOpen(true);
+  };
+
+  // Handle view order detail
+  const handleViewOrderDetail = (order: any) => {
+    orders.setCurrentOrder(order);
+    setOrderModalMode('detail');
+  };
+
+  // Handle back to shop from payment success
+  const handleBackToShop = () => {
+    setPage('shop');
+    orders.setCurrentOrder(null);
+  };
+
+  // Handle view order detail from payment success
+  const handleViewOrderDetailFromSuccess = () => {
+    setPage('shop');
+    setOrderModalMode('detail');
+    setOrderModalOpen(true);
+  };
+
+  // Check payment status
+  const handleCheckPaymentStatus = async () => {
+    return await orders.refreshCurrentOrder();
+  };
+
+  // Render payment success page
+  if (page === 'payment-success') {
+    return (
+      <PaymentSuccess
+        order={orders.currentOrder}
+        onBackToShop={handleBackToShop}
+        onViewOrderDetail={handleViewOrderDetailFromSuccess}
+        onCheckPaymentStatus={handleCheckPaymentStatus}
+      />
+    );
+  }
+
   return (
     <div className="shop-page">
       <Topbar
@@ -73,6 +176,7 @@ function App() {
         onOpenAuth={() => setAuthOpen(true)}
         currentUserEmail={auth.currentUser?.email ?? null}
         onLogout={auth.logout}
+        onOpenOrders={handleOpenOrders}
         onNotReady={notReady}
       />
 
@@ -95,11 +199,8 @@ function App() {
           <div className="hero">
             <div>
               <div className="hero-title">Khám phá sản phẩm</div>
-              <div className="hero-sub">Xem sản phẩm không cần đăng nhập. Đặt hàng sẽ handle sau.</div>
+              <div className="hero-sub">Chọn sản phẩm và đặt hàng ngay hôm nay.</div>
             </div>
-            <button type="button" className="primary" onClick={() => notReady('order-service')}>
-              Mua ngay (chưa handle)
-            </button>
           </div>
 
           {productsState.error ? <div className="notice error">{productsState.error}</div> : null}
@@ -117,6 +218,7 @@ function App() {
         product={selectedProduct}
         onClose={() => setSelectedProduct(null)}
         onAddToCart={(p) => void cart.addItem(p, 1)}
+        onBuyNow={handleBuyNow}
         onNotReady={notReady}
       />
 
@@ -131,8 +233,26 @@ function App() {
         onDec={(itemId, qty) => void cart.updateQty(itemId, Math.max(1, qty - 1))}
         onRemove={(itemId) => void cart.removeItem(itemId)}
         onClear={() => void cart.clear()}
-        onCheckoutNotReady={() => notReady('order-service')}
+        onCheckout={handleCheckout}
         productById={productsState.productById}
+        checkoutEnabled={cart.items.length > 0}
+      />
+
+      <OrderModal
+        open={orderModalOpen}
+        onClose={() => {
+          setOrderModalOpen(false);
+          setOrderModalMode('place');
+        }}
+        mode={orderModalMode}
+        items={orderItems}
+        totalAmount={orderTotal}
+        onPlaceOrder={handlePlaceOrder}
+        orders={orders.orders}
+        currentOrder={orders.currentOrder}
+        loading={orders.loading}
+        error={orders.error}
+        onViewOrderDetail={handleViewOrderDetail}
       />
 
       <AuthModal
