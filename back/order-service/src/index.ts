@@ -3,7 +3,7 @@ import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
-import { connectConsumer, disconnectConsumer, subscribeToDeliveryEvents } from './config/kafka';
+import { connectConsumer, disconnectConsumer, subscribeToDeliveryEvents, subscribeToPaymentEvents } from './config/kafka';
 import { KafkaConsumerService } from './services/kafkaConsumerService';
 import orderRoutes from './routes/orderRoutes';
 import paymentRoutes from './routes/paymentRoutes';
@@ -81,6 +81,7 @@ app.listen(port, async () => {
   try {
     await connectConsumer();
     await subscribeToDeliveryEvents();
+    await subscribeToPaymentEvents();
     kafkaConsumerService = new KafkaConsumerService();
     await kafkaConsumerService.startConsumer();
     console.log('Kafka consumer service started successfully');

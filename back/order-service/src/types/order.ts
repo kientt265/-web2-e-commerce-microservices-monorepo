@@ -42,7 +42,8 @@ export interface OrderResponse {
   totalAmount: number;
   status: 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
   paymentMethod: 'ONLINE_PAYMENT' | 'CASH_ON_DELIVERY';
-  paymentStatus: 'PENDING' | 'PAID' | 'FAILED';
+  paymentStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'EXPIRED' | 'CANCELLED' | 'REFUNDED';
+  deliveryStatus: 'AWAITING_PAYMENT' | 'PENDING' | 'PROCESSING' | 'PICKED_UP' | 'IN_TRANSIT' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'FAILED' | 'CANCELLED' | 'RETURNED';
   shippingAddress: {
     street: string;
     city: string;

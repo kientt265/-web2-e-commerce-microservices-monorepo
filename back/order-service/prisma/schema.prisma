@@ -12,6 +12,8 @@ model orders {
   user_id          String        @db.Uuid
   status           String        @default("pending") @db.VarChar(50)
   payment_method   payment_method_enum  @default(COD)
+  payment_status   PaymentStatus        @default(PENDING)
+  delivery_status  DeliveryStatus        @default(PENDING)
   total_amount     Decimal       @db.Decimal(10, 2)
   shipping_address String
   created_at       DateTime?     @default(now()) @db.Timestamp(6)
@@ -40,6 +42,29 @@ enum order_status_enum {
 enum payment_method_enum {
   COD
   ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+enum DeliveryStatus {
+  AWAITING_PAYMENT
+  PENDING
+  PROCESSING
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  CANCELLED
+  RETURNED
 }
 
 model outbox {
