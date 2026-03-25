@@ -205,17 +205,28 @@ export class DeliveryService {
     if (notes !== undefined) updateData.notes = notes;
     if (quantity !== undefined) updateData.quantity = quantity;
 
-    if (resolvedStatus === 'DELIVERED' || resolvedStatus === 'FAILED') {
+    if (resolvedStatus) {
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const delivery = await tx.deliveries.update({
           where: { id: deliveryId },
           data: updateData,
           include: { delivery_events: true },
         });
+
+        // Create a delivery event for the status change if status was updated
+        await tx.delivery_events.create({
+          data: {
+            delivery_id: deliveryId,
+            status: resolvedStatus!,
+            description: `Updated via updateDelivery`,
+            created_at: new Date(),
+          },
+        });
+
         await saveDeliveryOutcomeOutbox(tx, {
           deliveryId,
           orderId: delivery.order_id,
-          status: resolvedStatus,
+          status: resolvedStatus!,
           userId: delivery.user_id,
           productId: delivery.product_id,
           quantity: delivery.quantity,
@@ -287,30 +298,29 @@ export class DeliveryService {
         include: { delivery_events: true },
       });
 
-      await tx.delivery_events.create({
-        data: {
-          delivery_id: deliveryId,
-          status: deliveryStatus,
-          description,
-          location,
-          created_at: new Date(),
-        },
-      });
-
-      if (deliveryStatus === 'DELIVERED' || deliveryStatus === 'FAILED') {
-        await saveDeliveryOutcomeOutbox(tx, {
-          deliveryId,
-          orderId: delivery.order_id,
-          status: deliveryStatus,
-          userId: delivery.user_id,
-          productId: delivery.product_id,
-          quantity: delivery.quantity,
-        });
-      }
-
-      return delivery;
+    await tx.delivery_events.create({
+      data: {
+        delivery_id: deliveryId,
+        status: deliveryStatus,
+        description,
+        location,
+        created_at: new Date(),
+      },
     });
-  }
+
+    // Always save to outbox on any status update
+    await saveDeliveryOutcomeOutbox(tx, {
+      deliveryId,
+      orderId: delivery.order_id,
+      status: deliveryStatus,
+      userId: delivery.user_id,
+      productId: delivery.product_id,
+      quantity: delivery.quantity,
+    });
+
+    return delivery;
+  });
+}
 
   async updateDeliveryStatusFromPayment(orderId: string, newStatus: DeliveryStatus): Promise<void> {
     try {
@@ -328,24 +338,36 @@ export class DeliveryService {
 
       console.log(`🔄 Updating delivery ${delivery.id} status from ${delivery.status} to ${newStatus}`);
       
-      // Update delivery status
-      const updatedDelivery = await prisma.deliveries.update({
-        where: { id: delivery.id },
-        data: {
-          status: newStatus,
-          updated_at: new Date(),
-        },
-        include: { delivery_events: true },
-      });
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        // Update delivery status
+        const updatedDelivery = await tx.deliveries.update({
+          where: { id: delivery.id },
+          data: {
+            status: newStatus,
+            updated_at: new Date(),
+          },
+          include: { delivery_events: true },
+        });
 
-      // Create delivery event record
-      await prisma.delivery_events.create({
-        data: {
-          delivery_id: delivery.id,
+        // Create delivery event record
+        await tx.delivery_events.create({
+          data: {
+            delivery_id: delivery.id,
+            status: newStatus,
+            description: `Status updated from payment event: ${newStatus}`,
+            created_at: new Date(),
+          },
+        });
+
+        // Always save to outbox on status update from payment
+        await saveDeliveryOutcomeOutbox(tx, {
+          deliveryId: delivery.id,
+          orderId: delivery.order_id,
           status: newStatus,
-          description: `Status updated from payment event: ${newStatus}`,
-          created_at: new Date(),
-        },
+          userId: delivery.user_id,
+          productId: delivery.product_id,
+          quantity: delivery.quantity,
+        });
       });
 
       console.log(`✅ Delivery status updated: ${delivery.id} → ${newStatus}`);

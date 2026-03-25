@@ -115,6 +115,7 @@ export class OrderService {
         status: 'PENDING',
         paymentMethod: orderData.paymentMethod,
         paymentStatus: orderData.paymentMethod === 'CASH_ON_DELIVERY' ? 'PENDING' : 'PENDING',
+        deliveryStatus: order.delivery_status as any,
         shippingAddress: orderData.shippingAddress,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
@@ -172,9 +173,10 @@ export class OrderService {
           price: item.price_at_time
         })),
         totalAmount: order.total_amount,
-        status: order.status.toUpperCase(),
+        status: order.status.toUpperCase() as any,
         paymentMethod: order.payment_method === 'ONLINE' ? 'ONLINE_PAYMENT' : 'CASH_ON_DELIVERY',
-        paymentStatus: 'PENDING', // TODO: Get from payment service
+        paymentStatus: order.payment_status as any,
+        deliveryStatus: order.delivery_status as any,
         shippingAddress: JSON.parse(order.shipping_address),
         createdAt: order.created_at?.toISOString() || '',
         updatedAt: order.updated_at?.toISOString() || '',
@@ -211,9 +213,10 @@ export class OrderService {
           price: item.price_at_time
         })),
         totalAmount: order.total_amount,
-        status: order.status.toUpperCase(),
+        status: order.status.toUpperCase() as any,
         paymentMethod: order.payment_method === 'ONLINE' ? 'ONLINE_PAYMENT' : 'CASH_ON_DELIVERY',
-        paymentStatus: 'PENDING', // TODO: Get from payment service
+        paymentStatus: order.payment_status as any,
+        deliveryStatus: order.delivery_status as any,
         shippingAddress: JSON.parse(order.shipping_address),
         createdAt: order.created_at?.toISOString() || '',
         updatedAt: order.updated_at?.toISOString() || '',
