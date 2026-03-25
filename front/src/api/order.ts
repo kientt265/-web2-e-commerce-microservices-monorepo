@@ -21,7 +21,8 @@ export type Order = {
   totalAmount: number;
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED';
   paymentMethod: 'ONLINE_PAYMENT' | 'CASH_ON_DELIVERY';
-  paymentStatus: 'PENDING' | 'PAID' | 'FAILED';
+  paymentStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'EXPIRED' | 'CANCELLED' | 'REFUNDED';
+  deliveryStatus: 'AWAITING_PAYMENT' | 'PENDING' | 'PROCESSING' | 'PICKED_UP' | 'IN_TRANSIT' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'FAILED' | 'CANCELLED' | 'RETURNED';
   shippingAddress: ShippingAddress;
   createdAt: string;
   updatedAt: string;
@@ -70,6 +71,17 @@ export type GetOrderResponse = {
   data: Order;
 };
 
+export type GetOrderStatusResponse = {
+  success: boolean;
+  data: {
+    orderId: string;
+    status: Order['status'];
+    paymentStatus: Order['paymentStatus'];
+    deliveryStatus: Order['deliveryStatus'];
+    updatedAt: string;
+  };
+};
+
 export async function createOrder(baseUrl: string, body: CreateOrderRequest) {
   return await fetchJson<CreateOrderResponse>(`${baseUrl}/api/orders`, {
     method: 'POST',
@@ -83,6 +95,10 @@ export async function getOrderById(baseUrl: string, orderId: string) {
 
 export async function getOrdersByUserId(baseUrl: string, userId: string) {
   return await fetchJson<GetOrdersResponse>(`${baseUrl}/api/orders/user/${userId}`);
+}
+
+export async function getOrderStatus(baseUrl: string, orderId: string) {
+  return await fetchJson<GetOrderStatusResponse>(`${baseUrl}/api/orders/${orderId}/status`);
 }
 
 export async function createPaymentUrl(baseUrl: string, body: CreatePaymentUrlRequest) {

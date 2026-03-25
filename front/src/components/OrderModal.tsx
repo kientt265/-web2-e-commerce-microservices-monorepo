@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { Order, OrderItem, ShippingAddress } from '../api/order';
 import { formatOrderStatus, formatPaymentStatus, getStatusColor } from '../api/order';
-import type { Delivery } from '../api/delivery';
 import { formatDeliveryStatus, getDeliveryStatusColor, getDeliveryStatusIcon } from '../api/delivery';
 import { formatMoney } from '../utils/money';
 
@@ -23,12 +22,7 @@ type OrderModalProps = {
   error?: string | null;
   onViewOrderDetail?: (order: Order) => void;
   onGoToPayment?: (paymentUrl: string) => void;
-  // Delivery props
-  deliveries?: Delivery[];
-  deliveryLoading?: boolean;
-  deliveryError?: string | null;
-  onLoadDeliveriesByOrderId?: (orderId: string) => Promise<Delivery[]>;
-  onRefreshDelivery?: () => void;
+  onRefreshOrder?: () => void;
 };
 
 const defaultAddress: ShippingAddress = {
@@ -52,12 +46,7 @@ export function OrderModal({
   error = null,
   onViewOrderDetail,
   onGoToPayment,
-  // Delivery props
-  deliveries = [],
-  deliveryLoading = false,
-  deliveryError = null,
-  onLoadDeliveriesByOrderId,
-  onRefreshDelivery,
+  onRefreshOrder,
 }: OrderModalProps) {
   const [address, setAddress] = useState<ShippingAddress>(defaultAddress);
   const [paymentMethod, setPaymentMethod] = useState<'ONLINE_PAYMENT' | 'CASH_ON_DELIVERY'>('ONLINE_PAYMENT');
@@ -86,10 +75,6 @@ export function OrderModal({
 
   const handleViewOrderDetail = (order: Order) => {
     onViewOrderDetail?.(order);
-    // Load deliveries for this order
-    if (onLoadDeliveriesByOrderId) {
-      void onLoadDeliveriesByOrderId(order.orderId);
-    }
   };
 
   const handleGoToPayment = () => {
@@ -332,56 +317,27 @@ export function OrderModal({
           </p>
         </div>
 
-        {deliveryLoading && (
-          <div className="detail-section">
-            <h5>🚚 Thông tin vận chuyển</h5>
-            <div className="muted">Đang tải...</div>
+        <div className="detail-section">
+          <h5>🚚 Thông tin vận chuyển</h5>
+          <div className="delivery-info-card">
+            <div className="delivery-status-row">
+              <span
+                className="delivery-status-badge"
+                style={{ backgroundColor: getDeliveryStatusColor(currentOrder.deliveryStatus as any) }}
+              >
+                {getDeliveryStatusIcon(currentOrder.deliveryStatus as any)} {formatDeliveryStatus(currentOrder.deliveryStatus as any)}
+              </span>
+            </div>
+            <p className="delivery-carrier">
+              <strong>Trạng thái giao hàng hiện tại:</strong> {formatDeliveryStatus(currentOrder.deliveryStatus as any)}
+            </p>
           </div>
-        )}
-
-        {deliveryError && (
-          <div className="detail-section">
-            <h5>🚚 Thông tin vận chuyển</h5>
-            <div className="notice error">{deliveryError}</div>
-          </div>
-        )}
-
-        {deliveries.length > 0 && (
-          <div className="detail-section">
-            <h5>🚚 Thông tin vận chuyển</h5>
-            {deliveries.map((delivery) => (
-              <div key={delivery.id} className="delivery-info-card">
-                <div className="delivery-status-row">
-                  <span
-                    className="delivery-status-badge"
-                    style={{ backgroundColor: getDeliveryStatusColor(delivery.status) }}
-                  >
-                    {getDeliveryStatusIcon(delivery.status)} {formatDeliveryStatus(delivery.status)}
-                  </span>
-                  {delivery.tracking_code && (
-                    <span className="tracking-code">Mã: {delivery.tracking_code}</span>
-                  )}
-                </div>
-                {delivery.carrier && (
-                  <p className="delivery-carrier">
-                    <strong>Đơn vị vận chuyển:</strong> {delivery.carrier}
-                  </p>
-                )}
-                {delivery.estimated_at && (
-                  <p className="delivery-estimated">
-                    <strong>Dự kiến giao:</strong>{' '}
-                    {new Date(delivery.estimated_at).toLocaleDateString('vi-VN')}
-                  </p>
-                )}
-              </div>
-            ))}
-            {onRefreshDelivery && (
-              <button type="button" className="ghost small" onClick={onRefreshDelivery}>
-                🔄 Làm mới
-              </button>
-            )}
-          </div>
-        )}
+          {onRefreshOrder && (
+            <button type="button" className="ghost small" onClick={onRefreshOrder}>
+              🔄 Làm mới trạng thái
+            </button>
+          )}
+        </div>
 
         <div className="detail-meta">
           <p className="muted small">
