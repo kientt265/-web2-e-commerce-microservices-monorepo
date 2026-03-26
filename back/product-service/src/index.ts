@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
 import productRoutes from './routes/productRoutes';
 import { openApiSpec } from './openapi';
+import { connectConsumer, subscribeToInventoryEvents, disconnectConsumer } from './config/kafka';
+import { KafkaConsumerService } from './services/kafkaConsumerService';
 
 dotenv.config();
 
@@ -68,12 +70,52 @@ app.use('*', (req: express.Request, res: express.Response) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
+// Initialize Kafka Consumer
+let kafkaConsumerService: KafkaConsumerService;
+
+const initKafkaConsumer = async () => {
+  try {
+    await connectConsumer();
+    await subscribeToInventoryEvents();
+    
+    kafkaConsumerService = new KafkaConsumerService(prisma);
+    await kafkaConsumerService.startConsumer();
+    
+    console.log('✅ Kafka consumer initialized successfully');
+  } catch (error) {
+    console.error('❌ Failed to initialize Kafka consumer:', error);
+    // Don't throw here - allow the service to start even if Kafka fails
+    // In production, you might want to handle this differently
+  }
+};
+
 app.listen(port, async () => {
-  console.log(`Product Service is running on port ${port}`);
+  console.log(`🚀 Product Service is running on port ${port}`);
+  
+  // Initialize Kafka after server starts
+  await initKafkaConsumer();
 });
 
 process.on('SIGTERM', async () => {
   console.log('Shutting down Product Service...');
+  
+  if (kafkaConsumerService) {
+    await kafkaConsumerService.stopConsumer();
+  }
+  await disconnectConsumer();
   await prisma.$disconnect();
+  
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('Shutting down Product Service (SIGINT)...');
+  
+  if (kafkaConsumerService) {
+    await kafkaConsumerService.stopConsumer();
+  }
+  await disconnectConsumer();
+  await prisma.$disconnect();
+  
   process.exit(0);
 });

@@ -1,6 +1,6 @@
 logs:
-	docker compose logs -f $(T)
+	docker compose logs -f $(t)
 exec: 
-	docker compose exec -it $(T) sh
+	docker compose exec -it $(t) sh
 ngrok:
 	ngrok http 3008
