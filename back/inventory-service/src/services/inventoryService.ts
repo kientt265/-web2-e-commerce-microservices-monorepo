@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { ORDER_EVENTS, DELIVERY_EVENTS, PAYMENT_EVENTS } from '../constants/orderEvents';
 import { OrderEvent, DeliveryEvent, PaymentEvent, InventoryTransaction } from '../types/inventory';
+import { saveInventoryQuantityOutbox, saveInventoryCreatedOutbox, INVENTORY_OUTBOX_EVENT } from './outboxService';
 //TODO: Chưa check lại quantity available -> lỗi -> saga pattern
 //TODO: Chưa handle việc quá 15p EXPIRED transaction
 //TODO: Nhận message từ payment để update status payment_status
@@ -108,19 +109,38 @@ export class InventoryService {
       console.log(`📊 Current inventory - Total: ${inventory.quantity}, Reserved Shipping: ${inventory.reserved_shipping}`);
 
       if (deliveryEvent.eventType === DELIVERY_EVENTS.DELIVERY_DELIVERED) {
-        // Giao thành công: trừ cả reserved_shipping và tổng quantity
-        console.log(`✅ Delivery successful - Reducing reserved_shipping and total quantity`);
+        // Giao thành công: chỉ giảm reserved_shipping, quantity đã được trừ khi đặt trước
+        console.log(`✅ Delivery successful - Reducing reserved_shipping only`);
         
-        await this.prisma.inventories.update({
-          where: { id: inventory.id },
-          data: {
-            reserved_shipping: { decrement: deliveryEvent.quantity },
-            quantity: { decrement: deliveryEvent.quantity },
-            updated_at: new Date()
-          }
+        await this.prisma.$transaction(async (tx: PrismaClient) => {
+          // Update inventory - chỉ giảm reserved_shipping
+          await tx.inventories.update({
+            where: { id: inventory.id },
+            data: {
+              reserved_shipping: { decrement: deliveryEvent.quantity },
+              updated_at: new Date()
+            }
+          });
+          
+          // Save to outbox for product-service
+          await saveInventoryQuantityOutbox(tx, {
+            inventoryId: inventory.id,
+            productId: deliveryEvent.productId,
+            eventType: 'QUANTITY_UPDATED',
+            quantityChange: {
+              previousQuantity: inventory.quantity,
+              newQuantity: inventory.quantity,
+              change: 0
+            },
+            reservedCheckout: inventory.reserved_checkout,
+            reservedShipping: inventory.reserved_shipping - deliveryEvent.quantity,
+            orderId: deliveryEvent.orderId,
+            reason: 'DELIVERY_DELIVERED'
+          });
         });
         
-        console.log(`✅ Updated inventory - Reserved shipping: ${inventory.reserved_shipping - deliveryEvent.quantity}, Total quantity: ${inventory.quantity - deliveryEvent.quantity}`);
+        console.log(`✅ Updated inventory - Reserved shipping: ${inventory.reserved_shipping - deliveryEvent.quantity}, Available quantity unchanged: ${inventory.quantity}`);
+        console.log(`📤 Saved quantity change to outbox for product-service`);
         
       } else if (deliveryEvent.eventType === DELIVERY_EVENTS.DELIVERY_FAILED) {
         // Giao thất bại: chỉ trừ reserved_shipping
@@ -162,20 +182,16 @@ export class InventoryService {
     const reservationField = orderEvent.paymentMethod === 'CASH_ON_DELIVERY' ? 'reserved_shipping' : 'reserved_checkout';
     console.log(`📋 Reserving ${item.quantity} units in ${reservationField} for ${orderEvent.paymentMethod}`);
     
-    await this.updateInventoryReservation(inventory.id, reservationField, item.quantity);
-    console.log(`✅ Reserved ${item.quantity} units successfully`);
-
-    // Create inventory transaction record with data from order event
-    console.log(`💳 Creating transaction record for order ${orderEvent.orderId}`);
-    await this.createInventoryTransaction(
-      inventory.id,
-      orderEvent.orderId,
+    // Process reservation and create transaction in a single transaction with outbox
+    await this.reserveInventoryWithOutbox(
+      inventory,
+      reservationField,
       item.quantity,
-      orderEvent.paymentMethod,
-      'PENDING' // Initial status when order is created
+      orderEvent.orderId,
+      orderEvent.paymentMethod
     );
-
-    console.log(`💰 Transaction created successfully - Item ${item.productId}: reserved ${item.quantity} units for ${reservationField}`);
+    
+    console.log(`✅ Reserved ${item.quantity} units successfully with outbox event`);
   }
 
   private async findInventoryByProductId(productId: string): Promise<any> {
@@ -187,25 +203,89 @@ export class InventoryService {
 
   private async createInventoryRecord(productId: string): Promise<any> {
     // Create inventory record with product_id from order event
-    return await this.prisma.inventories.create({
-      data: {
-        product_id: productId, // Use productId from order event
-        quantity: 100, // Default quantity
-        reserved_checkout: 0,
-        reserved_shipping: 0,
-        min_threshold: 5,
-        location: `Warehouse-${productId}`,
-      },
+    const location = `Warehouse-${productId}`;
+    const initialQuantity = 100;
+    const minThreshold = 5;
+    
+    return await this.prisma.$transaction(async (tx: PrismaClient) => {
+      const inventory = await tx.inventories.create({
+        data: {
+          product_id: productId,
+          quantity: initialQuantity,
+          reserved_checkout: 0,
+          reserved_shipping: 0,
+          min_threshold: minThreshold,
+          location,
+        },
+      });
+      
+      // Save to outbox for product-service
+      await saveInventoryCreatedOutbox(tx, {
+        inventoryId: inventory.id,
+        productId,
+        initialQuantity,
+        minThreshold,
+        location
+      });
+      
+      console.log(`📤 Saved new inventory creation to outbox for product-service`);
+      
+      return inventory;
     });
   }
 
-  private async updateInventoryReservation(inventoryId: number, field: 'reserved_checkout' | 'reserved_shipping', quantity: number): Promise<void> {
-    await this.prisma.inventories.update({
-      where: { id: inventoryId },
-      data: {
-        [field]: { increment: quantity },
-        updated_at: new Date()
-      },
+  private async reserveInventoryWithOutbox(
+    inventory: any,
+    field: 'reserved_checkout' | 'reserved_shipping',
+    quantity: number,
+    orderId: string,
+    paymentMethod: 'ONLINE_PAYMENT' | 'CASH_ON_DELIVERY'
+  ): Promise<void> {
+    const previousQuantity = inventory.quantity;
+    const previousReserved = field === 'reserved_checkout' ? inventory.reserved_checkout : inventory.reserved_shipping;
+    
+    await this.prisma.$transaction(async (tx: PrismaClient) => {
+      // Update inventory - decrease available quantity, increase reserved
+      await tx.inventories.update({
+        where: { id: inventory.id },
+        data: {
+          [field]: { increment: quantity },
+          quantity: { decrement: quantity },
+          updated_at: new Date()
+        },
+      });
+      
+      // Create inventory transaction record
+      await tx.inventory_transactions.create({
+        data: {
+          inventory_id: inventory.id,
+          payment_method: paymentMethod,
+          payment_status: 'PENDING',
+          quantity,
+          order_id: orderId,
+        },
+      });
+      
+      // Save to outbox for product-service
+      const newQuantity = previousQuantity - quantity;
+      const newReserved = previousReserved + quantity;
+      
+      await saveInventoryQuantityOutbox(tx, {
+        inventoryId: inventory.id,
+        productId: inventory.product_id,
+        eventType: 'QUANTITY_UPDATED',
+        quantityChange: {
+          previousQuantity,
+          newQuantity,
+          change: -quantity
+        },
+        reservedCheckout: field === 'reserved_checkout' ? newReserved : inventory.reserved_checkout,
+        reservedShipping: field === 'reserved_shipping' ? newReserved : inventory.reserved_shipping,
+        orderId,
+        reason: `ORDER_RESERVED_${field.toUpperCase()}`
+      });
+      
+      console.log(`📤 Saved reservation to outbox: ${previousQuantity} → ${newQuantity} available, ${newReserved} reserved`);
     });
   }
 
@@ -252,6 +332,62 @@ export class InventoryService {
   }
 
   async updateInventory(inventoryId: number, updateData: any): Promise<any> {
+    console.log(`🔄 updateInventory called for ID ${inventoryId}`, updateData);
+    
+    // If quantity is being updated, use transaction to save outbox
+    if (updateData.quantity !== undefined) {
+      console.log(`📝 Quantity update detected: ${updateData.quantity}`);
+      
+      const existingInventory = await this.prisma.inventories.findUnique({
+        where: { id: inventoryId }
+      });
+      
+      if (!existingInventory) {
+        throw new Error(`Inventory ${inventoryId} not found`);
+      }
+      
+      const previousQuantity = existingInventory.quantity;
+      const newQuantity = updateData.quantity;
+      const change = newQuantity - previousQuantity;
+      
+      console.log(`📊 Quantity change: ${previousQuantity} → ${newQuantity} (change: ${change})`);
+      
+      try {
+        return await this.prisma.$transaction(async (tx: PrismaClient) => {
+          const inventory = await tx.inventories.update({
+            where: { id: inventoryId },
+            data: updateData,
+          });
+          
+          console.log(`✅ Inventory updated in DB, now saving to outbox...`);
+          
+          // Save to outbox for product-service
+          await saveInventoryQuantityOutbox(tx, {
+            inventoryId,
+            productId: existingInventory.product_id,
+            eventType: 'QUANTITY_UPDATED',
+            quantityChange: {
+              previousQuantity,
+              newQuantity,
+              change
+            },
+            reservedCheckout: inventory.reserved_checkout,
+            reservedShipping: inventory.reserved_shipping,
+            reason: 'ADMIN_UPDATE'
+          });
+          
+          console.log(`📤 Saved quantity update to outbox for product-service`);
+          
+          return inventory;
+        });
+      } catch (error) {
+        console.error(`❌ Error in updateInventory transaction:`, error);
+        throw error;
+      }
+    }
+    
+    // If no quantity change, just update normally
+    console.log(`📝 No quantity change, updating inventory directly`);
     return await this.prisma.inventories.update({
       where: { id: inventoryId },
       data: updateData,
@@ -259,6 +395,39 @@ export class InventoryService {
   }
 
   async createInventory(data: any): Promise<any> {
+    // If creating with quantity, use transaction to save outbox
+    if (data.quantity !== undefined && data.product_id) {
+      const initialQuantity = data.quantity;
+      const minThreshold = data.min_threshold ?? 5;
+      const location = data.location ?? `Warehouse-${data.product_id}`;
+      
+      return await this.prisma.$transaction(async (tx: PrismaClient) => {
+        const inventory = await tx.inventories.create({
+          data: {
+            ...data,
+            reserved_checkout: data.reserved_checkout ?? 0,
+            reserved_shipping: data.reserved_shipping ?? 0,
+            min_threshold: minThreshold,
+            location
+          },
+        });
+        
+        // Save to outbox for product-service
+        await saveInventoryCreatedOutbox(tx, {
+          inventoryId: inventory.id,
+          productId: data.product_id,
+          initialQuantity,
+          minThreshold,
+          location
+        });
+        
+        console.log(`📤 Saved new inventory creation to outbox for product-service`);
+        
+        return inventory;
+      });
+    }
+    
+    // Otherwise create normally
     return await this.prisma.inventories.create({
       data,
     });
