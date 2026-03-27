@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
 import webhookRoutes from './routes/webhookRoutes';
 import { openApiSpec } from './openapi';
-import { connectConsumer, disconnectConsumer, subscribeToOrderEvents } from './config/kafka';
+import { connectConsumer, disconnectConsumer, subscribeToOrderEvents, subscribeToDeliveryEvents } from './config/kafka';
 import { PaymentService } from './services/paymentService';
 import { KafkaConsumerService } from './services/kafkaConsumerService';
 
@@ -85,6 +85,7 @@ app.listen(port, async () => {
   try {
     await connectConsumer();
     await subscribeToOrderEvents();
+    await subscribeToDeliveryEvents();
 
     const paymentService = new PaymentService();
     kafkaConsumerService = new KafkaConsumerService(paymentService);

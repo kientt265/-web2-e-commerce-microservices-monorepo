@@ -164,6 +164,49 @@ router.get('/:orderId', orderController.getOrderById);
 
 /**
  * @swagger
+ * /api/orders/{orderId}/status:
+ *   get:
+ *     summary: Get order status by ID
+ *     tags: [Orders]
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Order ID
+ *     responses:
+ *       200:
+ *         description: Order status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     orderId:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                     paymentStatus:
+ *                       type: string
+ *                     deliveryStatus:
+ *                       type: string
+ *                     updatedAt:
+ *                       type: string
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/:orderId/status', orderController.getOrderStatus);
+
+/**
+ * @swagger
  * /api/orders/user/{userId}:
  *   get:
  *     summary: Get all orders for a user

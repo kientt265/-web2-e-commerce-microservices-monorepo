@@ -13,8 +13,9 @@ export function CartModal({
   onDec,
   onRemove,
   onClear,
-  onCheckoutNotReady,
+  onCheckout,
   productById,
+  checkoutEnabled = true,
 }: {
   open: boolean;
   onClose: () => void;
@@ -26,8 +27,9 @@ export function CartModal({
   onDec: (itemId: number, currentQty: number) => void;
   onRemove: (itemId: number) => void;
   onClear: () => void;
-  onCheckoutNotReady: () => void;
+  onCheckout: () => void;
   productById: Map<number, Product>;
+  checkoutEnabled?: boolean;
 }) {
   if (!open) return null;
 
@@ -85,12 +87,17 @@ export function CartModal({
                   <div className="muted small">Tổng cộng</div>
                   <div className="price big">{formatMoney(total)}</div>
                 </div>
-                <div className="qty" style={{ justifyContent: 'flex-end' }}>
+                <div className="cart-actions">
                   <button type="button" className="danger" disabled={loading} onClick={onClear}>
                     Clear
                   </button>
-                  <button type="button" className="primary" disabled={loading} onClick={onCheckoutNotReady}>
-                    Checkout (chưa handle)
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={loading || !checkoutEnabled}
+                    onClick={onCheckout}
+                  >
+                    Thanh toán
                   </button>
                 </div>
               </div>

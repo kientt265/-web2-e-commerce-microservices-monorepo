@@ -137,4 +137,79 @@ export class PaymentService {
   async getPaymentByOrderId(orderId: string) {
     return prisma.payments.findUnique({ where: { order_id: orderId } });
   }
+
+  async updatePaymentFromDeliveryEvent(deliveryEvent: {
+    status: string;
+    orderId: string;
+    userId: string;
+    deliveryId?: number;
+    timestamp: string;
+  }): Promise<void> {
+    // Normalize orderId - handle cases like "order_order_xxx" -> "order_xxx"
+    let normalizedOrderId = deliveryEvent.orderId;
+    if (deliveryEvent.orderId.startsWith('order_order_')) {
+      normalizedOrderId = deliveryEvent.orderId.replace('order_order_', 'order_');
+    }
+
+    return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const payment = await tx.payments.findUnique({
+        where: { order_id: normalizedOrderId },
+      });
+
+      if (!payment) {
+        console.warn(`⚠️ Payment record not found for orderId: ${normalizedOrderId}`);
+        return;
+      }
+
+      // Map delivery status to payment status
+      let paymentStatus: PaymentStatus | null = null;
+      
+      if (deliveryEvent.status === 'DELIVERED') {
+        paymentStatus = 'COMPLETED';
+      } else if (deliveryEvent.status === 'CANCELLED') {
+        paymentStatus = 'CANCELLED';
+      } else if (deliveryEvent.status === 'RETURNED') {
+        paymentStatus = 'REFUNDED';
+      } else if (deliveryEvent.status === 'FAILED') {
+        paymentStatus = 'FAILED';
+      } else {
+        console.log(`⚠️ Unhandled delivery status: ${deliveryEvent.status}, skipping payment update`);
+        return;
+      }
+
+      const updatedPayment = await tx.payments.update({
+        where: { order_id: normalizedOrderId },
+        data: {
+          status: paymentStatus,
+          updated_at: new Date(),
+        },
+      });
+
+      // Save outbox event for other services
+      const outboxData = {
+        paymentId: updatedPayment.id,
+        orderId: normalizedOrderId,
+        userId: payment.user_id,
+        amount: Number(payment.amount),
+        paymentMethod: payment.payment_method,
+        status: paymentStatus,
+      };
+
+      if (paymentStatus === 'COMPLETED') {
+        await savePaymentCompletedOutbox(tx, outboxData);
+        console.log(`✅ Payment completed outbox event saved for order ${normalizedOrderId}`);
+      } else if (paymentStatus === 'CANCELLED') {
+        await savePaymentFailedOutbox(tx, outboxData);
+        console.log(`❌ Payment cancelled outbox event saved for order ${normalizedOrderId}`);
+      } else if (paymentStatus === 'REFUNDED') {
+        await savePaymentFailedOutbox(tx, outboxData);
+        console.log(`💰 Payment refunded outbox event saved for order ${normalizedOrderId}`);
+      } else if (paymentStatus === 'FAILED') {
+        await savePaymentFailedOutbox(tx, outboxData);
+        console.log(`❌ Payment failed outbox event saved for order ${normalizedOrderId}`);
+      }
+
+      console.log(`✅ Payment status updated: ${normalizedOrderId} → ${paymentStatus} (from delivery: ${deliveryEvent.status})`);
+    });
+  }
 }
