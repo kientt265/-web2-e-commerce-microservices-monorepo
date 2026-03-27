@@ -6,13 +6,13 @@ export function ProductModal({
   onClose,
   onAddToCart,
   onBuyNow,
-  onNotReady,
+  onViewRatings,
 }: {
   product: Product | null;
   onClose: () => void;
   onAddToCart: (p: Product) => void;
   onBuyNow: (p: Product) => void;
-  onNotReady: (service: string) => void;
+  onViewRatings: (p: Product) => void;
 }) {
   if (!product) return null;
   return (
@@ -48,8 +48,8 @@ export function ProductModal({
             </div>
             <p className="desc">{product.description || 'Không có mô tả.'}</p>
             <div className="modal-actions">
-              <button type="button" className="ghost" onClick={() => onNotReady('rating-service')}>
-                Xem đánh giá (chưa handle)
+              <button type="button" className="ghost" onClick={() => onViewRatings(product)}>
+                Xem đánh giá ({product.name})
               </button>
               <div className="action-row">
                 <button

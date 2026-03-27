@@ -4,11 +4,13 @@ import { formatMoney } from '../utils/money';
 export function ProductGrid({
   loading,
   products,
+  ratingStats = {},
   onOpen,
   onAddToCart,
 }: {
   loading: boolean;
   products: Product[];
+  ratingStats?: Record<number, { averageRating: number; totalRatings: number }>;
   onOpen: (p: Product) => void;
   onAddToCart: (p: Product) => void;
 }) {
@@ -36,6 +38,18 @@ export function ProductGrid({
               <div className="product-name" title={p.name}>
                 {p.name}
               </div>
+              
+              {ratingStats[p.id] && ratingStats[p.id].totalRatings > 0 && (
+                <div className="product-rating-small">
+                  <span className="stars-mini">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <span key={i} className={`star-mini ${i < Math.round(ratingStats[p.id].averageRating) ? 'filled' : ''}`}>★</span>
+                    ))}
+                  </span>
+                  <span className="rating-count-mini">({ratingStats[p.id].totalRatings})</span>
+                </div>
+              )}
+
               <div className="product-meta">
                 <span className="price">{formatMoney(price)}</span>
                 <span className={p.stock > 0 ? 'stock ok' : 'stock out'}>

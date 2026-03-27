@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import './App.css';
 
 const AUTH_API_BASE =
@@ -9,6 +9,8 @@ const CART_API_BASE =
   (import.meta as any).env?.VITE_CART_API_URL || 'http://localhost:3004';
 const ORDER_API_BASE =
   (import.meta as any).env?.VITE_ORDER_API_URL || 'http://localhost:3003';
+const RATING_API_BASE =
+  (import.meta as any).env?.VITE_RATING_API_URL || 'http://localhost:3007';
 
 import type { Product } from './api/product';
 import type { OrderItem } from './api/order';
@@ -20,10 +22,12 @@ import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { OrderModal } from './components/OrderModal';
 import { PaymentSuccess } from './components/PaymentSuccess';
+import { RatingModal } from './components/RatingModal';
 import { useAuth } from './hooks/useAuth';
 import { useCart } from './hooks/useCart';
 import { useOrders } from './hooks/useOrders';
 import { useProducts } from './hooks/useProducts';
+import { useRatings } from './hooks/useRatings';
 
 type Page = 'shop' | 'payment-success';
 
@@ -43,6 +47,14 @@ function App() {
   const productsState = useProducts(PRODUCT_API_BASE);
   const cart = useCart(CART_API_BASE, auth.cartUserId, log);
   const orders = useOrders(ORDER_API_BASE, auth.cartUserId, log);
+  const ratings = useRatings(RATING_API_BASE, auth.currentUser?.id);
+
+  useEffect(() => {
+    if (productsState.products.length > 0) {
+      const ids = productsState.products.map((p) => p.id);
+      void ratings.fetchBulkStats(ids);
+    }
+  }, [productsState.products, ratings.fetchBulkStats]);
 
   const [search, setSearch] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | 'all'>('all');
@@ -56,6 +68,12 @@ function App() {
   const [orderModalMode, setOrderModalMode] = useState<'place' | 'history' | 'detail'>('place');
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [orderTotal, setOrderTotal] = useState(0);
+
+  // Rating modal states
+  const [ratingModalOpen, setRatingModalOpen] = useState(false);
+  const [selectedProductForRating, setSelectedProductForRating] = useState<Product | null>(null);
+  const [selectedProductIdForRating, setSelectedProductIdForRating] = useState<number>(0);
+  const [selectedOrderIdForRating, setSelectedOrderIdForRating] = useState<number>(0);
 
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -208,6 +226,7 @@ function App() {
           <ProductGrid
             loading={productsState.loading}
             products={filteredProducts}
+            ratingStats={ratings.bulkStats}
             onOpen={(p) => setSelectedProduct(p)}
             onAddToCart={(p) => void cart.addItem(p, 1)}
           />
@@ -219,7 +238,12 @@ function App() {
         onClose={() => setSelectedProduct(null)}
         onAddToCart={(p) => void cart.addItem(p, 1)}
         onBuyNow={handleBuyNow}
-        onNotReady={notReady}
+        onViewRatings={(p) => {
+          setSelectedProductForRating(p);
+          setSelectedProductIdForRating(p.id);
+          setSelectedOrderIdForRating(0);
+          setRatingModalOpen(true);
+        }}
       />
 
       <CartModal
@@ -253,8 +277,14 @@ function App() {
         loading={orders.loading}
         error={orders.error}
         onViewOrderDetail={handleViewOrderDetail}
-        onRefreshOrder={() => {
-          void orders.refreshCurrentOrder();
+        ratingBaseUrl={RATING_API_BASE}
+        userId={auth.currentUser?.id}
+        onOpenRating={(productId, orderId) => {
+          const product = productsState.productById.get(productId) ?? null;
+          setSelectedProductForRating(product);
+          setSelectedProductIdForRating(productId);
+          setSelectedOrderIdForRating(orderId);
+          setRatingModalOpen(true);
         }}
       />
 
@@ -270,6 +300,21 @@ function App() {
         onRegister={auth.register}
         loading={auth.loading}
         error={auth.error}
+      />
+
+      <RatingModal
+        open={ratingModalOpen}
+        onClose={() => {
+          setRatingModalOpen(false);
+          setSelectedProductForRating(null);
+          setSelectedProductIdForRating(0);
+          setSelectedOrderIdForRating(0);
+        }}
+        product={selectedProductForRating}
+        productId={selectedProductIdForRating}
+        orderId={selectedOrderIdForRating || undefined}
+        userId={auth.currentUser?.id}
+        ratingBaseUrl={RATING_API_BASE}
       />
     </div>
   );

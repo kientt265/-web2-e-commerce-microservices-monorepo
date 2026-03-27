@@ -38,7 +38,7 @@ export function PaymentSuccess({
     if (!order) return { icon: '⏳', title: 'Không có thông tin', message: 'Không tìm thấy thông tin đơn hàng.' };
 
     switch (order.paymentStatus) {
-      case 'PAID':
+      case 'COMPLETED':
         return {
           icon: '✓',
           title: 'Thanh toán thành công!',

@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Order, OrderItem, ShippingAddress } from '../api/order';
 import { formatOrderStatus, formatPaymentStatus, getStatusColor } from '../api/order';
 import { formatDeliveryStatus, getDeliveryStatusColor, getDeliveryStatusIcon } from '../api/delivery';
 import { formatMoney } from '../utils/money';
+import type { RatingEligibility } from '../api/rating';
+import * as ratingApi from '../api/rating';
 
 type OrderModalProps = {
   open: boolean;
@@ -23,6 +25,9 @@ type OrderModalProps = {
   onViewOrderDetail?: (order: Order) => void;
   onGoToPayment?: (paymentUrl: string) => void;
   onRefreshOrder?: () => void;
+  ratingBaseUrl?: string;
+  userId?: string;
+  onOpenRating?: (productId: number, orderId: number) => void;
 };
 
 const defaultAddress: ShippingAddress = {
@@ -47,10 +52,43 @@ export function OrderModal({
   onViewOrderDetail,
   onGoToPayment,
   onRefreshOrder,
+  ratingBaseUrl,
+  userId,
+  onOpenRating,
 }: OrderModalProps) {
   const [address, setAddress] = useState<ShippingAddress>(defaultAddress);
   const [paymentMethod, setPaymentMethod] = useState<'ONLINE_PAYMENT' | 'CASH_ON_DELIVERY'>('ONLINE_PAYMENT');
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
+  const [eligibilities, setEligibilities] = useState<RatingEligibility[]>([]);
+  const [loadingEligibilities, setLoadingEligibilities] = useState(false);
+
+  useEffect(() => {
+    if (open && (mode === 'detail' || mode === 'history') && userId && ratingBaseUrl) {
+      void fetchEligibilities();
+    }
+  }, [open, mode, userId, ratingBaseUrl]);
+
+  const fetchEligibilities = async () => {
+    if (!userId || !ratingBaseUrl) return;
+    setLoadingEligibilities(true);
+    const response = await ratingApi.getUserEligibilities(ratingBaseUrl, userId);
+    if (response.ok) {
+      setEligibilities(response.data?.eligibilities ?? []);
+    }
+    setLoadingEligibilities(false);
+  };
+
+  const getEligibilitiesForOrder = (orderId: string): RatingEligibility[] => {
+    const numericOrderId = parseInt(orderId.replace(/\D/g, ''), 10) || 0;
+    return eligibilities.filter((e) => e.order_id === numericOrderId);
+  };
+
+  const getEligibility = (productId: number, orderId: string): RatingEligibility | undefined => {
+    const numericOrderId = parseInt(orderId.replace(/\D/g, ''), 10) || 0;
+    return eligibilities.find(
+      (e) => e.product_id === productId && e.order_id === numericOrderId
+    );
+  };
 
   if (!open) return null;
 
@@ -221,42 +259,96 @@ export function OrderModal({
 
   const renderOrderHistory = () => (
     <div className="order-history">
-      <h4>Lịch sử đơn hàng</h4>
+      <div className="history-header">
+        <h4>Lịch sử đơn hàng</h4>
+        {userId && (
+          <button 
+            type="button" 
+            className="ghost small" 
+            onClick={fetchEligibilities}
+            disabled={loadingEligibilities}
+            title="Tải lại danh sách sản phẩm có thể đánh giá"
+          >
+            {loadingEligibilities ? '🔄 Đang tải...' : '🔄 Làm mới quyền đánh giá'}
+          </button>
+        )}
+      </div>
+      <div className="rating-info">
+        <span className="muted small">
+          💡 Nút "Đánh giá" chỉ xuất hiện khi đơn hàng được giao thành công
+        </span>
+      </div>
       {orders.length === 0 ? (
         <div className="muted">Chưa có đơn hàng nào.</div>
       ) : (
         <div className="order-list">
-          {orders.map((order) => (
-            <div
-              key={order.orderId}
-              className="order-card"
-              onClick={() => handleViewOrderDetail(order)}
-            >
-              <div className="order-header">
-                <span className="order-id">{order.orderId}</span>
-                <span
-                  className="order-status-badge"
-                  style={{ backgroundColor: getStatusColor(order.status) }}
-                >
-                  {formatOrderStatus(order.status)}
-                </span>
-              </div>
-              <div className="order-body">
-                <div className="order-meta">
-                  <span>{order.items.length} sản phẩm</span>
-                  <span>{formatMoney(order.totalAmount)}</span>
+          {orders.map((order) => {
+            const orderEligibilities = getEligibilitiesForOrder(order.orderId);
+            const hasAnyEligible = orderEligibilities.length > 0;
+            const canRateAny = orderEligibilities.some((e) => !e.hasRated);
+            
+            return (
+              <div
+                key={order.orderId}
+                className="order-card"
+                onClick={() => handleViewOrderDetail(order)}
+              >
+                <div className="order-header">
+                  <span className="order-id">{order.orderId}</span>
+                  <div className="order-header-actions">
+                    {/* {hasAnyEligible && (
+                      <span className="rate-badge">⭐ Có thể đánh giá</span>
+                    )} */}
+                      <span className="rate-badge">⭐ Có thể đánh giá</span>
+                    <span
+                      className="order-status-badge"
+                      style={{ backgroundColor: getStatusColor(order.status) }}
+                    >
+                      {formatOrderStatus(order.status)}
+                    </span>
+                  </div>
                 </div>
-                <div className="order-payment">
-                  <span className={`payment-badge ${order.paymentStatus.toLowerCase()}`}>
-                    {formatPaymentStatus(order.paymentStatus)}
-                  </span>
-                  <span className="order-date">
-                    {new Date(order.createdAt).toLocaleDateString('vi-VN')}
-                  </span>
+                <div className="order-body">
+                  <div className="order-meta">
+                    <span>{order.items.length} sản phẩm</span>
+                    <span>{formatMoney(order.totalAmount)}</span>
+                  </div>
+                  <div className="order-payment-row">
+                    <div className="order-payment">
+                      <span className={`payment-badge ${order.paymentStatus.toLowerCase()}`}>
+                        {formatPaymentStatus(order.paymentStatus)}
+                      </span>
+                      <span className="order-date">
+                        {new Date(order.createdAt).toLocaleDateString('vi-VN')}
+                      </span>
+                    </div>
+                    {/* {canRateAny && (
+                      <button 
+                        type="button" 
+                        className="primary small rate-now-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleViewOrderDetail(order);
+                        }}
+                      >
+                        Đánh giá ngay
+                      </button>
+                    )} */}
+                                          <button 
+                        type="button" 
+                        className="primary small rate-now-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleViewOrderDetail(order);
+                        }}
+                      >
+                        Đánh giá ngay
+                      </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -279,13 +371,41 @@ export function OrderModal({
 
         <div className="detail-section">
           <h5>Sản phẩm</h5>
-          {currentOrder.items.map((item, idx) => (
-            <div key={idx} className="detail-item">
-              <span>Product ID: {item.productId}</span>
-              <span>x{item.quantity}</span>
-              <span>{formatMoney(item.price * item.quantity)}</span>
-            </div>
-          ))}
+          {currentOrder.items.map((item, idx) => {
+            const productId = parseInt(item.productId, 10);
+            const eligibility = getEligibility(productId, currentOrder.orderId);
+            const canRate = eligibility !== undefined && !eligibility.hasRated;
+            const hasRated = eligibility !== undefined && eligibility.hasRated;
+            
+            return (
+              <div key={idx} className="detail-item rating-item">
+                <div className="rating-item-info">
+                  <span>Product ID: {item.productId}</span>
+                  <span>x{item.quantity}</span>
+                  <span>{formatMoney(item.price * item.quantity)}</span>
+                </div>
+                {canRate ? (
+                  <div className="rating-item-action">
+                    <button
+                      type="button"
+                      className="primary small"
+                      onClick={() => onOpenRating?.(productId, parseInt(currentOrder.orderId.replace(/\D/g, ''), 10) || 0)}
+                    >
+                      ⭐ Đánh giá
+                    </button>
+                  </div>
+                ) : hasRated ? (
+                  <div className="rating-item-action">
+                    <span className="muted small">Đã đánh giá</span>
+                  </div>
+                ) : (
+                  <div className="rating-item-action">
+                    <span className="muted small" title="Sản phẩm này chưa đủ điều kiện đánh giá">Chưa thể đánh giá</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
           <div className="detail-total">
             <strong>Tổng: {formatMoney(currentOrder.totalAmount)}</strong>
           </div>

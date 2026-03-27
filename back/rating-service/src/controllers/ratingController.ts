@@ -1,6 +1,41 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 
+export const getBulkStats = async (req: Request, res: Response) => {
+  try {
+    const { productIds } = req.query;
+    if (!productIds || typeof productIds !== 'string') {
+      return res.status(400).json({ error: 'productIds query parameter is required' });
+    }
+
+    const ids = productIds.split(',').map((id) => parseInt(id, 10)).filter((id) => !isNaN(id));
+
+    const stats = await prisma.product_ratings.groupBy({
+      by: ['product_id'],
+      where: {
+        product_id: { in: ids },
+        is_published: true,
+      },
+      _avg: { rating: true },
+      _count: { rating: true },
+    });
+
+    const result = ids.reduce((acc: Record<number, { averageRating: number; totalRatings: number }>, id) => {
+      const s = stats.find((item: any) => item.product_id === id);
+      acc[id] = {
+        averageRating: s?._avg.rating || 0,
+        totalRatings: s?._count.rating || 0,
+      };
+      return acc;
+    }, {});
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching bulk stats:', error);
+    res.status(500).json({ error: 'Failed to fetch bulk stats' });
+  }
+};
+
 export const getRatingsByProduct = async (req: Request, res: Response) => {
   try {
     const { productId } = req.params;
@@ -266,5 +301,89 @@ export const reportRating = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error reporting rating:', error);
     res.status(500).json({ error: 'Failed to report rating' });
+  }
+};
+
+export const getUserEligibilities = async (req: Request, res: Response) => {
+  try {
+    const userId = req.headers['x-user-id'] as string;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'User ID required' });
+    }
+
+    const eligibilities = await prisma.rating_eligibilities.findMany({
+      where: { user_id: userId },
+      orderBy: { created_at: 'desc' },
+    });
+
+    const result = await Promise.all(
+      eligibilities.map(async (el: typeof eligibilities[0]) => {
+        const rating = await prisma.product_ratings.findFirst({
+          where: {
+            user_id: userId,
+            product_id: el.product_id,
+            order_id: el.order_id,
+          },
+        });
+        return {
+          ...el,
+          hasRated: !!rating,
+          ratingId: rating?.id ?? null,
+        };
+      })
+    );
+
+    res.json({ eligibilities: result });
+  } catch (error) {
+    console.error('Error fetching eligibilities:', error);
+    res.status(500).json({ error: 'Failed to fetch rating eligibilities' });
+  }
+};
+
+export const checkEligibility = async (req: Request, res: Response) => {
+  try {
+    const userId = req.headers['x-user-id'] as string;
+    const { productId } = req.params;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'User ID required' });
+    }
+
+    const eligibility = await prisma.rating_eligibilities.findFirst({
+      where: {
+        user_id: userId,
+        product_id: parseInt(productId),
+      },
+    });
+
+    if (!eligibility) {
+      return res.json({ eligible: false, reason: 'Not eligible for this product' });
+    }
+
+    const existingRating = await prisma.product_ratings.findFirst({
+      where: {
+        user_id: userId,
+        product_id: parseInt(productId),
+        order_id: eligibility.order_id,
+      },
+    });
+
+    if (existingRating) {
+      return res.json({
+        eligible: false,
+        reason: 'Already rated',
+        ratingId: existingRating.id,
+      });
+    }
+
+    res.json({
+      eligible: true,
+      orderId: eligibility.order_id,
+      deliveryId: eligibility.delivery_id,
+    });
+  } catch (error) {
+    console.error('Error checking eligibility:', error);
+    res.status(500).json({ error: 'Failed to check eligibility' });
   }
 };
