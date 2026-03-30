@@ -8,6 +8,41 @@ const prisma = new PrismaClient();
 
 export class OrderService {
   private outboxService = new OutboxService();
+  private inventoryServiceUrl = process.env.INVENTORY_SERVICE_URL || 'http://localhost:3005';
+
+  private async checkAndReserveStock(productId: string, quantity: number, orderId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.inventoryServiceUrl}/inventories/product/${productId}/reserve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quantity, orderId }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+        console.log(`❌ Stock check failed for product ${productId}: ${error.message}`);
+        return false;
+      }
+
+      const data = await response.json();
+      return data.success === true && data.result === 1;
+    } catch (error) {
+      console.error(`❌ Error calling inventory service for product ${productId}:`, error);
+      return false;
+    }
+  }
+
+  private async releaseStock(productId: string, quantity: number, orderId: string): Promise<void> {
+    try {
+      await fetch(`${this.inventoryServiceUrl}/inventories/product/${productId}/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quantity, orderId }),
+      });
+    } catch (error) {
+      console.error(`❌ Error releasing stock for product ${productId}:`, error);
+    }
+  }
 
   private generateOrderId(): string {
   // Generate a much smaller number that fits in INT4 (max 2,147,483,647)
@@ -67,9 +102,26 @@ export class OrderService {
   async createOrder(orderData: CreateOrderRequest): Promise<OrderResponse> {
     const orderId = this.generateOrderId();
     const now = new Date();
+    const reservedItems: { productId: string; quantity: number }[] = [];
 
     try {
-      // Save order to database using Prisma
+      // 1. Check and reserve stock for all items first
+      console.log(`🔍 Checking stock for order ${orderId}...`);
+      for (const item of orderData.items) {
+        const isReserved = await this.checkAndReserveStock(item.productId, item.quantity, orderId);
+        if (!isReserved) {
+          // Release any previously reserved items
+          console.log(`❌ Stock unavailable for product ${item.productId}, releasing reserved items...`);
+          for (const reserved of reservedItems) {
+            await this.releaseStock(reserved.productId, reserved.quantity, orderId);
+          }
+          throw new Error(`Product ${item.productId} is out of stock`);
+        }
+        reservedItems.push({ productId: item.productId, quantity: item.quantity });
+      }
+      console.log(`✅ All stock reserved successfully for order ${orderId}`);
+
+      // 2. Save order to database using Prisma
       const order = await prisma.orders.create({
         data: {
           id: orderId,
@@ -98,10 +150,10 @@ export class OrderService {
 
       console.log(`✅ Order saved to database: ${orderId}`);
 
-      // Publish order event to Kafka (outbox pattern)
+      // 3. Publish order event to Kafka (outbox pattern)
       await this.publishOrderEvent(orderData, orderId);
 
-      // Generate payment URL for online payment
+      // 4. Generate payment URL for online payment
       let paymentUrl: string | undefined;
       if (orderData.paymentMethod === 'ONLINE_PAYMENT') {
         paymentUrl = await this.generatePaymentUrl(orderId, orderData.totalAmount);
@@ -124,8 +176,13 @@ export class OrderService {
 
       return orderResponse;
     } catch (error) {
-      console.error('❌ Error creating order in database:', error);
-      throw new Error('Failed to create order');
+      // Release all reserved stock if order creation fails
+      console.log(`❌ Order creation failed, releasing reserved stock...`);
+      for (const reserved of reservedItems) {
+        await this.releaseStock(reserved.productId, reserved.quantity, orderId);
+      }
+      console.error('❌ Error creating order:', error);
+      throw error;
     }
   }
 

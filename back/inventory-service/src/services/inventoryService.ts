@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { ORDER_EVENTS, DELIVERY_EVENTS, PAYMENT_EVENTS } from '../constants/orderEvents';
 import { OrderEvent, DeliveryEvent, PaymentEvent, InventoryTransaction } from '../types/inventory';
 import { saveInventoryQuantityOutbox, saveInventoryCreatedOutbox, INVENTORY_OUTBOX_EVENT } from './outboxService';
+import redis from '../config/redis/redis';
 //TODO: Chưa check lại quantity available -> lỗi -> saga pattern
 //TODO: Chưa handle việc quá 15p EXPIRED transaction
 //TODO: Nhận message từ payment để update status payment_status
@@ -320,6 +321,19 @@ export class InventoryService {
     });
   }
 
+  async getInventoryByProductId(productId: string): Promise<any> {
+    const inventory = await this.prisma.inventories.findFirst({
+      where: { product_id: productId },
+      include: {
+        transactions: {
+          orderBy: { created_at: 'desc' },
+          take: 5,
+        },
+      },
+    });
+    return inventory;
+  }
+
   async getAllInventory(): Promise<any[]> {
     return await this.prisma.inventories.findMany({
       include: {
@@ -330,6 +344,7 @@ export class InventoryService {
       },
     });
   }
+
 
   async updateInventory(inventoryId: number, updateData: any): Promise<any> {
     console.log(`🔄 updateInventory called for ID ${inventoryId}`, updateData);
@@ -483,4 +498,134 @@ export class InventoryService {
       include: { inventory: true },
     });
   }
+
+  /**
+   * Check and reserve stock using Redis cache-aside pattern
+   * 1. Check if stock exists in Redis
+   * 2. If not, load from DB and set to Redis
+   * 3. Try to reserve stock in Redis
+   * 4. Return 1 if success, -1 if not enough stock
+   */
+  async checkAndReserveStock(productId: string, quantity: number, orderId: string): Promise<number> {
+    const redisKey = `stock:${productId}`;
+    
+    try {
+      // 1. Check if stock exists in Redis
+      let stock = await redis.get(redisKey);
+      
+      // 2. If not in Redis, load from DB
+      if (stock === null) {
+        console.log(`📦 Stock not found in Redis for product ${productId}, loading from DB...`);
+        const inventory = await this.findInventoryByProductId(productId);
+        
+        if (!inventory) {
+          console.log(`❌ No inventory found for product ${productId}`);
+          return -1;
+        }
+        
+        // Get available quantity (total - reserved)
+        const availableStock = inventory.quantity;
+        
+        // Set to Redis with TTL (e.g., 5 minutes)
+        await redis.setex(redisKey, 300, availableStock.toString());
+        stock = availableStock.toString();
+        console.log(`✅ Loaded stock ${availableStock} to Redis for product ${productId}`);
+      }
+      
+      const currentStock = parseInt(stock);
+      
+      // 3. Reserve stock using Lua script for atomic check-and-reserve
+      const result = await (redis as any).reserveStock(redisKey, quantity.toString());
+      
+      if (result === -1 || result === null) {
+        console.log(`❌ Not enough stock or failed to reserve for product ${productId}. Available: ${currentStock}, Requested: ${quantity}`);
+        return -1;
+      }
+      
+      console.log(`✅ Reserved ${quantity} units for product ${productId}. Remaining: ${result}`);
+      
+      // 5. Update DB to reflect the reservation
+      const inventory = await this.findInventoryByProductId(productId);
+      if (inventory) {
+        await this.prisma.$transaction(async (tx: PrismaClient) => {
+          // Update inventory - decrease available quantity
+          await tx.inventories.update({
+            where: { id: inventory.id },
+            data: {
+              reserved_checkout: { increment: quantity },
+              quantity: { decrement: quantity },
+              updated_at: new Date()
+            },
+          });
+          
+          // Create inventory transaction record
+          await tx.inventory_transactions.create({
+            data: {
+              inventory_id: inventory.id,
+              payment_method: 'ONLINE_PAYMENT',
+              payment_status: 'PENDING',
+              quantity,
+              order_id: orderId,
+            },
+          });
+        });
+        
+        console.log(`✅ DB updated for product ${productId}: reserved ${quantity}, quantity decreased`);
+      }
+      
+      return 1;
+      
+    } catch (error) {
+      console.error(`❌ Error checking/reserving stock for product ${productId}:`, error);
+      return -1;
+    }
+  }
+
+  /**
+   * Release reserved stock back to Redis and DB (for order cancellation/payment failure)
+   */
+  async releaseReservedStock(productId: string, quantity: number, orderId: string): Promise<number> {
+    const redisKey = `stock:${productId}`;
+    
+    try {
+      // 1. Increase stock in Redis
+      const newStock = await redis.incrby(redisKey, quantity);
+      console.log(`✅ Released ${quantity} units back to Redis for product ${productId}. New stock: ${newStock}`);
+      
+      // 2. Update DB to release reservation
+      const inventory = await this.findInventoryByProductId(productId);
+      if (inventory) {
+        await this.prisma.$transaction(async (tx: PrismaClient) => {
+          // Update inventory - increase available quantity, decrease reserved
+          await tx.inventories.update({
+            where: { id: inventory.id },
+            data: {
+              reserved_checkout: { decrement: quantity },
+              quantity: { increment: quantity },
+              updated_at: new Date()
+            },
+          });
+          
+          // Update transaction status to EXPIRED
+          await tx.inventory_transactions.updateMany({
+            where: {
+              order_id: orderId,
+              inventory_id: inventory.id,
+              payment_status: 'PENDING'
+            },
+            data: { payment_status: 'EXPIRED' }
+          });
+        });
+        
+        console.log(`✅ DB updated for product ${productId}: released ${quantity}, quantity increased`);
+      }
+      
+      return 1;
+      
+    } catch (error) {
+      console.error(`❌ Error releasing stock for product ${productId}:`, error);
+      return -1;
+    }
+  }
 }
+

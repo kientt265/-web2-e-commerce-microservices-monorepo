@@ -10,6 +10,39 @@ export class InventoryController {
     this.inventoryService = new InventoryService(prisma);
   }
 
+  getInventoryByProductId = async (req: Request, res: Response) => {
+    try {
+      const { productId } = req.params;
+
+      if (!productId) {
+        return res.status(400).json({
+          error: 'Invalid product ID',
+          message: 'Product ID is required',
+        });
+      }
+
+      const inventory = await this.inventoryService.getInventoryByProductId(productId);
+
+      if (!inventory) {
+        return res.status(404).json({
+          error: 'Inventory not found',
+          message: `No inventory found for product ${productId}`,
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: inventory,
+      });
+    } catch (error) {
+      console.error('Error getting inventory by product ID:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Failed to get inventory by product ID',
+      });
+    }
+  };
+
   // Get all inventory items
   getAllInventory = async (req: Request, res: Response) => {
     try {
@@ -315,6 +348,116 @@ export class InventoryController {
       res.status(500).json({
         error: 'Internal server error',
         message: 'Failed to get low stock items',
+      });
+    }
+  };
+
+  // Check and reserve stock using Redis (for order service)
+  checkAndReserveStock = async (req: Request, res: Response) => {
+    try {
+      const { productId } = req.params;
+      const { quantity, orderId } = req.body;
+
+      if (!productId) {
+        return res.status(400).json({
+          error: 'Invalid product ID',
+          message: 'Product ID is required',
+        });
+      }
+
+      if (!quantity || quantity <= 0 || isNaN(Number(quantity))) {
+        return res.status(400).json({
+          error: 'Invalid quantity',
+          message: 'Quantity must be a positive number',
+        });
+      }
+
+      if (!orderId) {
+        return res.status(400).json({
+          error: 'Invalid order ID',
+          message: 'Order ID is required',
+        });
+      }
+
+      const result = await this.inventoryService.checkAndReserveStock(
+        productId,
+        Number(quantity),
+        orderId
+      );
+
+      if (result === -1) {
+        return res.status(409).json({
+          success: false,
+          result: -1,
+          message: 'Insufficient stock or product not found',
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        result: 1,
+        message: 'Stock reserved successfully',
+      });
+    } catch (error) {
+      console.error('Error checking/reserving stock:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Failed to check/reserve stock',
+      });
+    }
+  };
+
+  // Release reserved stock (for order cancellation/payment failure)
+  releaseReservedStock = async (req: Request, res: Response) => {
+    try {
+      const { productId } = req.params;
+      const { quantity, orderId } = req.body;
+
+      if (!productId) {
+        return res.status(400).json({
+          error: 'Invalid product ID',
+          message: 'Product ID is required',
+        });
+      }
+
+      if (!quantity || quantity <= 0 || isNaN(Number(quantity))) {
+        return res.status(400).json({
+          error: 'Invalid quantity',
+          message: 'Quantity must be a positive number',
+        });
+      }
+
+      if (!orderId) {
+        return res.status(400).json({
+          error: 'Invalid order ID',
+          message: 'Order ID is required',
+        });
+      }
+
+      const result = await this.inventoryService.releaseReservedStock(
+        productId,
+        Number(quantity),
+        orderId
+      );
+
+      if (result === -1) {
+        return res.status(500).json({
+          success: false,
+          result: -1,
+          message: 'Failed to release reserved stock',
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        result: 1,
+        message: 'Reserved stock released successfully',
+      });
+    } catch (error) {
+      console.error('Error releasing reserved stock:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Failed to release reserved stock',
       });
     }
   };

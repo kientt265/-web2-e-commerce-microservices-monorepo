@@ -10,6 +10,7 @@ router.get('/health', (_req, res) => res.status(200).json({ ok: true, service: '
 // Inventory routes
 router.get('/inventories', inventoryController.getAllInventory);
 router.post('/inventories', inventoryController.createInventory);
+router.get('/inventories/product/:productId', inventoryController.getInventoryByProductId);
 router.get('/inventories/low-stock', inventoryController.getLowStockItems);
 router.get('/inventories/:inventoryId', inventoryController.getInventoryById);
 router.put('/inventories/:inventoryId', inventoryController.updateInventory);
@@ -20,5 +21,9 @@ router.get('/inventories/transactions', inventoryController.getInventoryTransact
 router.get('/inventories/transactions/payment-method/:paymentMethod', inventoryController.getTransactionsByPaymentMethod);
 router.get('/inventories/transactions/payment-status/:paymentStatus', inventoryController.getTransactionsByPaymentStatus);
 router.put('/inventories/transactions/:transactionId/status', inventoryController.updateTransactionStatus);
+
+// Redis stock routes (for order service integration)
+router.post('/inventories/product/:productId/reserve', inventoryController.checkAndReserveStock);
+router.post('/inventories/product/:productId/release', inventoryController.releaseReservedStock);
 
 export default router;
