@@ -14,7 +14,7 @@ pipeline {
     }
 
     environment {
-        AWS_REGION = 'us-east-1'
+        AWS_REGION = 'ap-southeast-1'
         AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')
         ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         SERVICES = "auth-service product-service order-service cart-service inventory-service delivery-service rating-service payment-service"
