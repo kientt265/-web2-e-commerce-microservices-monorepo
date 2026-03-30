@@ -8,7 +8,6 @@ import { prisma } from './lib/prisma';
 import { connectConsumer, disconnectConsumer, subscribeToDeliveryOutbox } from './config/kafka';
 import { DeliveryOutboxController } from './controllers/deliveryOutboxController';
 import { DeliveryOutboxConsumer } from './consumers/deliveryOutboxConsumer';
-// test push to ECR
 dotenv.config();
 
 const app = express();
