@@ -116,10 +116,13 @@ services:
       - PRISMA_SEED=false
       - KAFKA_BROKER_1=kafka-1:9092
       - KAFKA_BROKER_2=kafka-2:9092
+      - REDIS_HOST=inventory-redis
+      - REDIS_PORT=6379
     depends_on:
       - inventory-db
       - kafka-1
       - kafka-2
+      - inventory-redis
     volumes:
       - ./back/inventory-service:/app
       - /app/node_modules
@@ -440,6 +443,13 @@ services:
       VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
 
       PLUGIN_PATH: /kafka/connect
+    networks:
+      - app-network
+
+  inventory-redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
     networks:
       - app-network
 

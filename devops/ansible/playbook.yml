@@ -1,0 +1,8 @@
+- name: Setup Jenkins Server
+  hosts: jenkins
+  become: true
+  roles:
+    - docker
+    - jenkins
+    - tools
+    - cloudflare

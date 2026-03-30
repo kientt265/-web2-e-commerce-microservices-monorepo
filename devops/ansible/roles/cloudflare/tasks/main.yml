@@ -1,0 +1,24 @@
+- name: Download cloudflared package
+  get_url:
+    url: https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+    dest: /tmp/cloudflared.deb
+    mode: '0644'
+
+- name: Install cloudflared
+  apt:
+    deb: /tmp/cloudflared.deb
+    state: present
+
+- name: Install cloudflared service
+  shell: cloudflared service install "{{ cloudflare_tunnel_token }}"
+  when: cloudflare_tunnel_token is defined
+  register: cloudflared_install
+  failed_when: 
+    - cloudflared_install.rc != 0 
+    - "'already installed' not in cloudflared_install.stderr"
+
+- name: Start and enable cloudflared service
+  service:
+    name: cloudflared
+    state: started
+    enabled: yes
