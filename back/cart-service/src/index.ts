@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
 import cartRoutes from './routes/cartRoutes';
 import { openApiSpec } from './openapi';
-
+// test push to ECR
 dotenv.config();
 
 const prisma = new PrismaClient();

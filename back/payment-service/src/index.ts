@@ -8,7 +8,7 @@ import { openApiSpec } from './openapi';
 import { connectConsumer, disconnectConsumer, subscribeToOrderEvents, subscribeToDeliveryEvents } from './config/kafka';
 import { PaymentService } from './services/paymentService';
 import { KafkaConsumerService } from './services/kafkaConsumerService';
-
+// test push to ECR
 dotenv.config();
 
 const prisma = new PrismaClient();

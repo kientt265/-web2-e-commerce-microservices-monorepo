@@ -2,14 +2,11 @@ pipeline {
     agent any
 
     options {
-        // Keeps build history clean and avoids building multiple branches at once unnecessarily
         buildDiscarder(logRotator(numToKeepStr: '10'))
         disableConcurrentBuilds()
     }
 
     triggers {
-        // This enables the "GitHub hook trigger for GITScm polling"
-        // Even if Jenkins is behind NAT, having this here is standard for GitOps
         githubPush()
     }
 
@@ -18,6 +15,8 @@ pipeline {
         AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')
         ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         SERVICES = "auth-service product-service order-service cart-service inventory-service delivery-service rating-service payment-service"
+        GITHUB_USER = 'kientt265' // Thay bằng username GitHub của bạn
+        CONFIG_REPO = 'e-commerce-gitops-config'
     }
 
     stages {
@@ -34,12 +33,14 @@ pipeline {
                 }
             }
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-creds', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-creds', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'],
+                    string(credentialsId: 'github-token-cred', variable: 'GITHUB_TOKEN')
+                ]) {
                     script {
                         def changedServices = []
                         for (service in SERVICES.split(' ')) {
-                            def dir = service == 'frontend' ? 'front' : "back/${service}"
-                            // Find changes between current branch and its parent or previous build
+                            def dir = "back/${service}"
                             def changed = sh(script: "git diff --name-only HEAD~1 HEAD | grep '^${dir}/' || true", returnStdout: true).trim()
                             if (changed) {
                                 changedServices.add(service)
@@ -50,34 +51,40 @@ pipeline {
                             echo "No changes detected in services. Skipping build."
                         }
 
+                        // Build và Push từng service thay đổi
                         for (service in changedServices) {
-                            def dir = service == 'frontend' ? 'front' : "back/${service}"
-                            def repoName = service
+                            def dir = "back/${service}"
                             def tag = "${BRANCH_NAME}-${BUILD_NUMBER}"
                             
                             echo "Building and pushing service: ${service} with tag: ${tag}"
                             sh """
                                 cd ${dir}
                                 aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                                docker build -t ${ECR_REGISTRY}/${repoName}:latest .
-                                docker tag ${ECR_REGISTRY}/${repoName}:latest ${ECR_REGISTRY}/${repoName}:${tag}
-                                docker push ${ECR_REGISTRY}/${repoName}:latest
-                                docker push ${ECR_REGISTRY}/${repoName}:${tag}
+                                docker build -t ${ECR_REGISTRY}/${service}:latest .
+                                docker tag ${ECR_REGISTRY}/${service}:latest ${ECR_REGISTRY}/${service}:${tag}
+                                docker push ${ECR_REGISTRY}/${service}:latest
+                                docker push ${ECR_REGISTRY}/${service}:${tag}
+                            """
+
+                            // Cập nhật Manifest trong GitOps Repo
+                            echo "Đang cập nhật image tag cho ${service} trong repo ${CONFIG_REPO}..."
+                            sh """
+                                rm -rf ${CONFIG_REPO}
+                                git clone https://${GITHUB_TOKEN}@github.com/${GITHUB_USER}/${CONFIG_REPO}.git
+                                cd ${CONFIG_REPO}
+                                
+                                # Cập nhật tag image trong file YAML tương ứng (Giả sử file nằm trong services/)
+                                sed -i "s|image: ${ECR_REGISTRY}/${service}:.*|image: ${ECR_REGISTRY}/${service}:${tag}|g" services/${service}.yaml
+                                
+                                git config user.email "jenkins@example.com"
+                                git config user.name "Jenkins CI"
+                                git add services/${service}.yaml
+                                git commit -m "chore: update ${service} image tag to ${tag} [skip ci]"
+                                git push origin master
                             """
                         }
                     }
                 }
-            }
-        }
-
-
-        stage('Deploy to Production') {
-            when {
-                branch 'master'
-            }
-            steps {
-                echo "Triggering deployment to Production environment..."
-                // Logic to update ArgoCD production files or call ArgoCD API
             }
         }
     }
