@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-connect
+  labels:
+    app: kafka-connect
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-connect
+  template:
+    metadata:
+      labels:
+        app: kafka-connect
+    spec:
+      nodeSelector:
+        workload_type: stateful
+      containers:
+      - name: kafka-connect
+        image: debezium/connect:2.5
+        ports:
+        - containerPort: 8083
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "200m"
+        env:
+        - name: BOOTSTRAP_SERVERS
+          value: "kafka-0.kafka:9092,kafka-1.kafka:9092"
+        - name: GROUP_ID
+          value: "connect-cluster"
+        - name: CONFIG_STORAGE_TOPIC
+          value: "connect-configs"
+        - name: OFFSET_STORAGE_TOPIC
+          value: "connect-offsets"
+        - name: STATUS_STORAGE_TOPIC
+          value: "connect-status"
+        - name: CONFIG_STORAGE_REPLICATION_FACTOR
+          value: "2"
+        - name: OFFSET_STORAGE_REPLICATION_FACTOR
+          value: "2"
+        - name: STATUS_STORAGE_REPLICATION_FACTOR
+          value: "2"
+        - name: KEY_CONVERTER
+          value: "org.apache.kafka.connect.json.JsonConverter"
+        - name: VALUE_CONVERTER
+          value: "org.apache.kafka.connect.json.JsonConverter"
+        - name: VALUE_CONVERTER_SCHEMAS_ENABLE
+          value: "false"
+        - name: PLUGIN_PATH
+          value: "/kafka/connect"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-connect
+spec:
+  selector:
+    app: kafka-connect
+  ports:
+    - protocol: TCP
+      port: 8083
+      targetPort: 8083
+  type: ClusterIP
