@@ -15,7 +15,7 @@ pipeline {
         AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')
         ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         SERVICES = "auth-service product-service order-service cart-service inventory-service delivery-service rating-service payment-service"
-        GITHUB_USER = 'kientt265' // Thay bằng username GitHub của bạn
+        GITHUB_USER = 'kientt265' 
         CONFIG_REPO = 'e-commerce-gitops-config'
     }
 
@@ -51,7 +51,6 @@ pipeline {
                             echo "No changes detected in services. Skipping build."
                         }
 
-                        // Build và Push từng service thay đổi
                         for (service in changedServices) {
                             def dir = "back/${service}"
                             def tag = "${BRANCH_NAME}-${BUILD_NUMBER}"
@@ -70,7 +69,6 @@ pipeline {
                                 docker image prune -af || true          
                             """
 
-                            // Cập nhật Manifest trong GitOps Repo
                             echo "Đang cập nhật image tag cho ${service} trong repo ${CONFIG_REPO}..."
                             sh """
                                 rm -rf ${CONFIG_REPO}
