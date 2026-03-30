@@ -64,6 +64,10 @@ pipeline {
                                 docker tag ${ECR_REGISTRY}/${service}:latest ${ECR_REGISTRY}/${service}:${tag}
                                 docker push ${ECR_REGISTRY}/${service}:latest
                                 docker push ${ECR_REGISTRY}/${service}:${tag}
+
+                                docker rmi ${ECR_REGISTRY}/${service}:latest || true
+                                docker rmi ${ECR_REGISTRY}/${service}:${tag} || true
+                                docker image prune -af || true          
                             """
 
                             // Cập nhật Manifest trong GitOps Repo

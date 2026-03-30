@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
 import cartRoutes from './routes/cartRoutes';
 import { openApiSpec } from './openapi';
+//test
 dotenv.config();
 const prisma = new PrismaClient();
 const app = express();
