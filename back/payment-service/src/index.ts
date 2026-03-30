@@ -9,7 +9,7 @@ import { connectConsumer, disconnectConsumer, subscribeToOrderEvents, subscribeT
 import { PaymentService } from './services/paymentService';
 import { KafkaConsumerService } from './services/kafkaConsumerService';
 dotenv.config();
-//test
+ 
 const prisma = new PrismaClient();
 const app = express();
 const port = process.env.PAYMENT_PORT || 3008;

@@ -9,7 +9,7 @@ import { connectConsumer, disconnectConsumer, subscribeToDeliveryOutbox } from '
 import { DeliveryOutboxController } from './controllers/deliveryOutboxController';
 import { DeliveryOutboxConsumer } from './consumers/deliveryOutboxConsumer';
 dotenv.config();
-//test
+ 
 const app = express();
 const port = process.env.RATING_PORT || 3007;
 

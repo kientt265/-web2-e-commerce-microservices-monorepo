@@ -9,7 +9,7 @@ import { connectConsumer, disconnectConsumer, subscribeToOrderEvents, subscribeT
 import { InventoryService } from './services/inventoryService';
 import { KafkaConsumerService } from './services/kafkaConsumerService';
 dotenv.config();
-//test
+ 
 const prisma = new PrismaClient();
 const app = express();
 const port = process.env.INVENTORY_PORT || 3005;

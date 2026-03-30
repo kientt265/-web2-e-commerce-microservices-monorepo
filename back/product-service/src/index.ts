@@ -8,7 +8,7 @@ import { openApiSpec } from './openapi';
 import { connectConsumer, subscribeToInventoryEvents, disconnectConsumer } from './config/kafka';
 import { KafkaConsumerService } from './services/kafkaConsumerService';
 dotenv.config();
-//test
+ 
 const prisma = new PrismaClient();
 const app = express();
 const port = process.env.PRODUCT_PORT || 3001;
