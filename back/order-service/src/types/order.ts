@@ -42,7 +42,8 @@ export interface OrderResponse {
   totalAmount: number;
   status: 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
   paymentMethod: 'ONLINE_PAYMENT' | 'CASH_ON_DELIVERY';
-  paymentStatus: 'PENDING' | 'PAID' | 'FAILED';
+  paymentStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'EXPIRED' | 'CANCELLED' | 'REFUNDED';
+  deliveryStatus: 'AWAITING_PAYMENT' | 'PENDING' | 'PROCESSING' | 'PICKED_UP' | 'IN_TRANSIT' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'FAILED' | 'CANCELLED' | 'RETURNED';
   shippingAddress: {
     street: string;
     city: string;
@@ -53,4 +54,13 @@ export interface OrderResponse {
   createdAt: string;
   updatedAt: string;
   paymentUrl?: string; // TODO: Implement payment URL generation
+}
+
+export interface DeliveryEvent {
+  eventType: 'DELIVERY_CREATED' | 'DELIVERY_PICKED_UP' | 'DELIVERY_DELIVERED' | 'DELIVERY_FAILED' | 'DELIVERY_CANCELLED';
+  orderId: string;
+  userId?: string;
+  productId?: string;
+  status: string;
+  timestamp: string;
 }

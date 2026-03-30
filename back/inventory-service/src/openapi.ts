@@ -82,6 +82,34 @@ export const openApiSpec = {
         }
       }
     },
+    '/inventories/product/{productId}': {
+      parameters: [
+        { name: 'productId', in: 'path', required: true, schema: { type: 'string' }, description: 'Product ID' }
+      ],
+      get: {
+        tags: ['Inventory'],
+        summary: 'Get inventory by product ID',
+        responses: {
+          '200': {
+            description: 'Inventory retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    data: { $ref: '#/components/schemas/InventoryWithTransactions' }
+                  },
+                  required: ['success', 'data']
+                }
+              }
+            }
+          },
+          '400': { $ref: '#/components/responses/BadRequest' },
+          '404': { $ref: '#/components/responses/NotFound' }
+        }
+      }
+    },
     '/inventories/low-stock': {
       get: {
         tags: ['Inventory'],
@@ -299,6 +327,126 @@ export const openApiSpec = {
                     message: { type: 'string' }
                   },
                   required: ['success', 'data', 'message']
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/inventories/product/{productId}/reserve': {
+      parameters: [
+        { name: 'productId', in: 'path', required: true, schema: { type: 'string' }, description: 'Product ID' }
+      ],
+      post: {
+        tags: ['Inventory'],
+        summary: 'Check and reserve stock using Redis (for order service)',
+        description: 'Checks if stock exists in Redis, loads from DB if not found, then attempts to reserve the requested quantity. Returns 1 if successful, -1 if insufficient stock.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  quantity: { type: 'integer', minimum: 1, description: 'Quantity to reserve' },
+                  orderId: { type: 'string', description: 'Order ID for the reservation' }
+                },
+                required: ['quantity', 'orderId']
+              }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Stock reserved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    result: { type: 'integer', enum: [1], description: 'Success indicator' },
+                    message: { type: 'string' }
+                  },
+                  required: ['success', 'result', 'message']
+                }
+              }
+            }
+          },
+          '400': { $ref: '#/components/responses/BadRequest' },
+          '409': {
+            description: 'Insufficient stock or product not found',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    result: { type: 'integer', enum: [-1], description: 'Failure indicator' },
+                    message: { type: 'string' }
+                  },
+                  required: ['success', 'result', 'message']
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/inventories/product/{productId}/release': {
+      parameters: [
+        { name: 'productId', in: 'path', required: true, schema: { type: 'string' }, description: 'Product ID' }
+      ],
+      post: {
+        tags: ['Inventory'],
+        summary: 'Release reserved stock (for order cancellation/payment failure)',
+        description: 'Releases previously reserved stock back to inventory. Used when order is cancelled or payment fails.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  quantity: { type: 'integer', minimum: 1, description: 'Quantity to release' },
+                  orderId: { type: 'string', description: 'Order ID for the release' }
+                },
+                required: ['quantity', 'orderId']
+              }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Reserved stock released successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    result: { type: 'integer', enum: [1], description: 'Success indicator' },
+                    message: { type: 'string' }
+                  },
+                  required: ['success', 'result', 'message']
+                }
+              }
+            }
+          },
+          '400': { $ref: '#/components/responses/BadRequest' },
+          '500': {
+            description: 'Failed to release reserved stock',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    result: { type: 'integer', enum: [-1], description: 'Failure indicator' },
+                    message: { type: 'string' }
+                  },
+                  required: ['success', 'result', 'message']
                 }
               }
             }

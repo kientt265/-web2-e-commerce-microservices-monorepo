@@ -1,0 +1,84 @@
+pipeline {
+    agent any
+
+    options {
+        // Keeps build history clean and avoids building multiple branches at once unnecessarily
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+    }
+
+    triggers {
+        // This enables the "GitHub hook trigger for GITScm polling"
+        // Even if Jenkins is behind NAT, having this here is standard for GitOps
+        githubPush()
+    }
+
+    environment {
+        AWS_REGION = 'us-east-1'
+        AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        SERVICES = "auth-service product-service order-service cart-service inventory-service delivery-service rating-service payment-service"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build and Push') {
+            when {
+                anyOf {
+                    branch 'master'
+                }
+            }
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-creds', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                    script {
+                        def changedServices = []
+                        for (service in SERVICES.split(' ')) {
+                            def dir = service == 'frontend' ? 'front' : "back/${service}"
+                            // Find changes between current branch and its parent or previous build
+                            def changed = sh(script: "git diff --name-only HEAD~1 HEAD | grep '^${dir}/' || true", returnStdout: true).trim()
+                            if (changed) {
+                                changedServices.add(service)
+                            }
+                        }
+
+                        if (changedServices.isEmpty()) {
+                            echo "No changes detected in services. Skipping build."
+                        }
+
+                        for (service in changedServices) {
+                            def dir = service == 'frontend' ? 'front' : "back/${service}"
+                            def repoName = service
+                            def tag = "${BRANCH_NAME}-${BUILD_NUMBER}"
+                            
+                            echo "Building and pushing service: ${service} with tag: ${tag}"
+                            sh """
+                                cd ${dir}
+                                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                                docker build -t ${ECR_REGISTRY}/${repoName}:latest .
+                                docker tag ${ECR_REGISTRY}/${repoName}:latest ${ECR_REGISTRY}/${repoName}:${tag}
+                                docker push ${ECR_REGISTRY}/${repoName}:latest
+                                docker push ${ECR_REGISTRY}/${repoName}:${tag}
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+
+        stage('Deploy to Production') {
+            when {
+                branch 'master'
+            }
+            steps {
+                echo "Triggering deployment to Production environment..."
+                // Logic to update ArgoCD production files or call ArgoCD API
+            }
+        }
+    }
+}

@@ -1,14 +1,15 @@
 export const openApiSpec = {
   openapi: '3.0.3',
   info: {
-    title: 'Order Service API',
+    title: 'Order Service API (VNPay)',
     version: '1.0.0',
-    description: 'Order management APIs: create orders, get orders by ID or user ID. Supports online payment and cash on delivery with Kafka event publishing.',
+    description:
+      'Order management APIs: create orders, get orders by ID or user ID. Supports VNPay online payment (payment URL creation) and cash on delivery via outbox event publishing.',
   },
   servers: [{ url: '/' }],
-  tags: [{ name: 'Health' }, { name: 'Orders' }],
+  tags: [{ name: 'Health' }, { name: 'Orders' }, { name: 'Payments' }],
   paths: {
-    '/health': {
+    '/run': {
       get: {
         tags: ['Health'],
         summary: 'Health check',
@@ -19,8 +20,10 @@ export const openApiSpec = {
               'application/json': {
                 schema: {
                   type: 'object',
-                  properties: { ok: { type: 'boolean' }, service: { type: 'string' } },
-                  required: ['ok', 'service'],
+                  properties: { 
+                    message: { type: 'string' }
+                  },
+                  required: ['message'],
                 },
               },
             },
@@ -32,7 +35,7 @@ export const openApiSpec = {
       post: {
         tags: ['Orders'],
         summary: 'Create a new order',
-        description: 'Creates a new order and publishes event to Kafka. Returns payment URL placeholder for online payment orders.',
+        description: 'Creates a new order and saves to database. Generates VNPay URL for online payment orders. Uses outbox pattern for event publishing.',
         requestBody: {
           required: true,
           content: {
@@ -41,10 +44,10 @@ export const openApiSpec = {
               examples: {
                 onlinePayment: {
                   value: {
-                    userId: 'user123',
+                    userId: '550e8400-e29b-41d4-a716-446655440000',
                     items: [
                       {
-                        productId: 'product1',
+                        productId: 'product_123',
                         quantity: 2,
                         price: 99.99
                       }
@@ -62,10 +65,10 @@ export const openApiSpec = {
                 },
                 cashOnDelivery: {
                   value: {
-                    userId: 'user456',
+                    userId: '550e8400-e29b-41d4-a716-446655440000',
                     items: [
                       {
-                        productId: 'product2',
+                        productId: 'product_456',
                         quantity: 1,
                         price: 49.99
                       }
@@ -109,12 +112,12 @@ export const openApiSpec = {
     },
     '/api/orders/{orderId}': {
       parameters: [
-        { name: 'orderId', in: 'path', required: true, schema: { type: 'string' }, description: 'Order ID' }
+        { name: 'orderId', in: 'path', required: true, schema: { type: 'string' }, description: 'Order ID (format: order_123456)' }
       ],
       get: {
         tags: ['Orders'],
         summary: 'Get order by ID',
-        description: 'Retrieves order details by order ID',
+        description: 'Retrieves order details by order ID from database',
         responses: {
           '200': {
             description: 'Order found',
@@ -138,12 +141,12 @@ export const openApiSpec = {
     },
     '/api/orders/user/{userId}': {
       parameters: [
-        { name: 'userId', in: 'path', required: true, schema: { type: 'string' }, description: 'User ID' }
+        { name: 'userId', in: 'path', required: true, schema: { type: 'string' }, description: 'User ID (UUID format)' }
       ],
       get: {
         tags: ['Orders'],
         summary: 'Get all orders for a user',
-        description: 'Retrieves all orders belonging to a specific user',
+        description: 'Retrieves all orders belonging to a specific user from database',
         responses: {
           '200': {
             description: 'Orders retrieved successfully',
@@ -160,6 +163,47 @@ export const openApiSpec = {
                     count: { type: 'integer' }
                   },
                   required: ['success', 'data', 'count']
+                }
+              }
+            }
+          },
+          '400': { $ref: '#/components/responses/BadRequest' },
+          '500': { $ref: '#/components/responses/InternalServerError' }
+        }
+      }
+    },
+    '/api/orders/payment-url': {
+      post: {
+        tags: ['Payments'],
+        summary: 'Create VNPay payment URL',
+        description: 'Creates a VNPay payment URL for an existing order',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreatePaymentUrlRequest' },
+              example: {
+                orderId: 'order_123456',
+                amount: 199.98,
+                orderInfo: 'Thanh toan don hang #123456',
+                bankCode: 'VNBANK'
+              }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Payment URL created successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    data: { $ref: '#/components/schemas/PaymentUrlResponse' },
+                    message: { type: 'string' }
+                  },
+                  required: ['success', 'data', 'message']
                 }
               }
             }
@@ -222,27 +266,32 @@ export const openApiSpec = {
       OrderItem: {
         type: 'object',
         properties: {
-          productId: { type: 'string', description: 'Product ID' },
-          quantity: { type: 'integer', minimum: 1, description: 'Item quantity' },
-          price: { type: 'number', minimum: 0, description: 'Price per item' }
+          productId: { type: 'string', description: 'Product ID (format: product_123)', example: 'product_123' },
+          quantity: { type: 'integer', minimum: 1, description: 'Item quantity', example: 2 },
+          price: { type: 'number', minimum: 0, description: 'Price per item', example: 99.99 }
         },
         required: ['productId', 'quantity', 'price']
       },
       ShippingAddress: {
         type: 'object',
         properties: {
-          street: { type: 'string', description: 'Street address' },
-          city: { type: 'string', description: 'City' },
-          state: { type: 'string', description: 'State or province' },
-          zipCode: { type: 'string', description: 'ZIP or postal code' },
-          country: { type: 'string', description: 'Country' }
+          street: { type: 'string', description: 'Street address', example: '123 Main St' },
+          city: { type: 'string', description: 'City', example: 'New York' },
+          state: { type: 'string', description: 'State or province', example: 'NY' },
+          zipCode: { type: 'string', description: 'ZIP or postal code', example: '10001' },
+          country: { type: 'string', description: 'Country', example: 'USA' }
         },
         required: ['street', 'city', 'state', 'zipCode', 'country']
       },
       CreateOrderRequest: {
         type: 'object',
         properties: {
-          userId: { type: 'string', description: 'User ID' },
+          userId: { 
+            type: 'string', 
+            format: 'uuid',
+            description: 'User ID (UUID format)', 
+            example: '550e8400-e29b-41d4-a716-446655440000'
+          },
           items: {
             type: 'array',
             items: { $ref: '#/components/schemas/OrderItem' },
@@ -255,35 +304,38 @@ export const openApiSpec = {
             enum: ['ONLINE_PAYMENT', 'CASH_ON_DELIVERY'],
             description: 'Payment method'
           },
-          totalAmount: { type: 'number', minimum: 0, description: 'Total order amount' }
+          totalAmount: { type: 'number', minimum: 0, description: 'Total order amount', example: 199.98 }
         },
         required: ['userId', 'items', 'shippingAddress', 'paymentMethod', 'totalAmount']
       },
       OrderResponse: {
         type: 'object',
         properties: {
-          orderId: { type: 'string', description: 'Unique order identifier' },
-          userId: { type: 'string', description: 'User ID' },
+          orderId: { type: 'string', description: 'Unique order identifier', example: 'order_123456' },
+          userId: { type: 'string', description: 'User ID', example: '550e8400-e29b-41d4-a716-446655440000' },
           items: {
             type: 'array',
             items: { $ref: '#/components/schemas/OrderItem' },
             description: 'Order items'
           },
-          totalAmount: { type: 'number', description: 'Total order amount' },
+          totalAmount: { type: 'number', description: 'Total order amount', example: 199.98 },
           status: {
             type: 'string',
-            enum: ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'],
-            description: 'Order status'
+            enum: ['PENDING', 'PROCESSING', 'COMPLETED', 'CANCELLED', 'REFUNDED'],
+            description: 'Order status',
+            example: 'PENDING'
           },
           paymentMethod: {
             type: 'string',
             enum: ['ONLINE_PAYMENT', 'CASH_ON_DELIVERY'],
-            description: 'Payment method'
+            description: 'Payment method',
+            example: 'ONLINE_PAYMENT'
           },
           paymentStatus: {
             type: 'string',
             enum: ['PENDING', 'PAID', 'FAILED'],
-            description: 'Payment status'
+            description: 'Payment status',
+            example: 'PENDING'
           },
           shippingAddress: { $ref: '#/components/schemas/ShippingAddress' },
           createdAt: { type: 'string', format: 'date-time', description: 'Order creation timestamp' },
@@ -291,10 +343,30 @@ export const openApiSpec = {
           paymentUrl: { 
             type: 'string', 
             nullable: true, 
-            description: 'Payment URL for online payment (TODO: Implement payment gateway integration)' 
+            description: 'VNPay payment URL for online payment orders',
+            example: 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?...'
           }
         },
         required: ['orderId', 'userId', 'items', 'totalAmount', 'status', 'paymentMethod', 'paymentStatus', 'shippingAddress', 'createdAt', 'updatedAt']
+      },
+      CreatePaymentUrlRequest: {
+        type: 'object',
+        properties: {
+          orderId: { type: 'string', description: 'Order ID', example: 'order_123456' },
+          amount: { type: 'number', minimum: 0, description: 'Payment amount', example: 199.98 },
+          orderInfo: { type: 'string', description: 'Order description', example: 'Thanh toan don hang #123456' },
+          bankCode: { type: 'string', description: 'Bank code (optional)', example: 'VNBANK' }
+        },
+        required: ['orderId', 'amount', 'orderInfo']
+      },
+      PaymentUrlResponse: {
+        type: 'object',
+        properties: {
+          paymentUrl: { type: 'string', description: 'VNPay payment URL', example: 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?...' },
+          orderId: { type: 'string', description: 'Order ID', example: 'order_123456' },
+          amount: { type: 'number', description: 'Payment amount', example: 199.98 }
+        },
+        required: ['paymentUrl', 'orderId', 'amount']
       }
     }
   }

@@ -5,11 +5,13 @@ export function ProductModal({
   product,
   onClose,
   onAddToCart,
+  onBuyNow,
   onNotReady,
 }: {
   product: Product | null;
   onClose: () => void;
   onAddToCart: (p: Product) => void;
+  onBuyNow: (p: Product) => void;
   onNotReady: (service: string) => void;
 }) {
   if (!product) return null;
@@ -49,9 +51,24 @@ export function ProductModal({
               <button type="button" className="ghost" onClick={() => onNotReady('rating-service')}>
                 Xem đánh giá (chưa handle)
               </button>
-              <button type="button" className="primary" disabled={product.stock <= 0} onClick={() => onAddToCart(product)}>
-                Thêm vào giỏ
-              </button>
+              <div className="action-row">
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={product.stock <= 0}
+                  onClick={() => onBuyNow(product)}
+                >
+                  Mua ngay
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={product.stock <= 0}
+                  onClick={() => onAddToCart(product)}
+                >
+                  Thêm vào giỏ
+                </button>
+              </div>
             </div>
           </div>
         </div>

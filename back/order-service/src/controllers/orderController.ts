@@ -5,6 +5,13 @@ import { CreateOrderRequest } from '../types/order';
 export class OrderController {
   private orderService: OrderService;
 
+  private isUuid(value: string): boolean {
+    // Runtime validation: prisma expects Postgres UUID.
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    );
+  }
+
   constructor() {
     this.orderService = new OrderService();
   }
@@ -18,6 +25,13 @@ export class OrderController {
         return res.status(400).json({
           error: 'Missing required fields',
           message: 'userId, items, shippingAddress, and paymentMethod are required',
+        });
+      }
+
+      if (typeof orderData.userId !== 'string' || !this.isUuid(orderData.userId)) {
+        return res.status(400).json({
+          error: 'Invalid userId',
+          message: 'userId must be a valid UUID',
         });
       }
 
@@ -80,6 +94,45 @@ export class OrderController {
       res.status(500).json({
         error: 'Internal server error',
         message: 'Failed to get order',
+      });
+    }
+  };
+
+  getOrderStatus = async (req: Request, res: Response) => {
+    try {
+      const { orderId } = req.params;
+
+      if (!orderId) {
+        return res.status(400).json({
+          error: 'Missing order ID',
+          message: 'Order ID is required',
+        });
+      }
+
+      const order = await this.orderService.getOrderById(orderId);
+
+      if (!order) {
+        return res.status(404).json({
+          error: 'Order not found',
+          message: `Order with ID ${orderId} not found`,
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          orderId: order.orderId,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          deliveryStatus: order.deliveryStatus,
+          updatedAt: order.updatedAt
+        },
+      });
+    } catch (error) {
+      console.error('Error getting order status:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Failed to get order status',
       });
     }
   };

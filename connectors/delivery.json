@@ -1,0 +1,25 @@
+{
+    "name": "delivery-outbox-connector",
+    "config": {
+      "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+  
+      "database.hostname": "delivery-db",
+      "database.port": "5432",
+      "database.user": "postgres",
+      "database.password": "postgres",
+      "database.dbname": "delivery_db",
+  
+      "database.server.name": "delivery-service",
+  
+      "plugin.name": "pgoutput",
+  
+      "table.include.list": "public.outbox",
+  
+      "topic.prefix": "outbox",
+  
+      "transforms": "outbox",
+      "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+      "transforms.outbox.route.by.field": "aggregatetype",
+      "transforms.outbox.route.topic.replacement": "outbox.${routedByValue}"
+    }
+  }

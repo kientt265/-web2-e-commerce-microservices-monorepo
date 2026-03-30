@@ -20,3 +20,10 @@ venv/
 **/.venv/
 
 back/src/demo/__pycache__/
+
+*.pem
+terraform.tfvars
+.terraform/
+
+devops/ansible/inventory.ini
+devops/ansible/*.retry

@@ -3,12 +3,17 @@ import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
+import deliveryRoutes from './routes/deliveryRoutes';
+import { openApiSpec } from './openapi';
+import { connectConsumer, disconnectConsumer, subscribeToOrderEvents, subscribeToPaymentEvents } from './config/kafka';
+import { deliveryService } from './services/deliveryService';
+import { KafkaConsumerService } from './services/kafkaConsumerService';
 
 dotenv.config();
 
 const prisma = new PrismaClient();
 const app = express();
-const port = process.env.AUTH_PORT || 3006;
+const port = process.env.DELIVERY_PORT || 3001;
 
 const allowedOrigins =
   process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean) ??
@@ -24,19 +29,74 @@ app.options('*', cors(corsOptions));
 
 app.use(express.json());
 app.use(cookieParser());
+
+app.get('/openapi.json', (_req, res) => {
+  res.status(200).json(openApiSpec);
+});
+
+app.get('/docs', (_req, res) => {
+  res.status(200).type('html').send(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Delivery Service API Docs</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+    <style>
+      body { margin: 0; background: #0b1020; }
+      #swagger-ui { background: white; }
+    </style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script>
+      window.ui = SwaggerUIBundle({
+        url: '/openapi.json',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        persistAuthorization: true
+      });
+    </script>
+  </body>
+</html>`);
+});
+
+app.use('/', deliveryRoutes);
+
 app.get('/run', (req, res) => {
   res.send('Delivery Service is running');
 });
+
 app.use('*', (req: express.Request, res: express.Response) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
+let kafkaConsumerService: KafkaConsumerService;
+
 app.listen(port, async () => {
   console.log(`Delivery Service is running on port ${port}`);
+
+  try {
+    await connectConsumer();
+    await subscribeToOrderEvents();
+    await subscribeToPaymentEvents();
+    kafkaConsumerService = new KafkaConsumerService(deliveryService);
+    await kafkaConsumerService.startConsumer();
+    console.log('Kafka consumer service started successfully');
+  } catch (error) {
+    console.error('Failed to start Kafka consumer service:', error);
+  }
 });
 
 process.on('SIGTERM', async () => {
-  console.log('Shutting down Auth Service...');
+  console.log('Shutting down Delivery Service...');
+
+  if (kafkaConsumerService) {
+    await kafkaConsumerService.stopConsumer();
+  }
+
+  await disconnectConsumer();
   await prisma.$disconnect();
   process.exit(0);
 });

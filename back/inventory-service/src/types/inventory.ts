@@ -60,3 +60,27 @@ export interface UpdateInventoryRequest {
   min_threshold?: number;
   location?: string;
 }
+
+export interface DeliveryEvent {
+  status: string;
+  userId: string;
+  orderId: string;
+  quantity: number;
+  eventType: string;
+  productId: string;
+  timestamp: string;
+  deliveryId: number;
+  orderIdNumeric: string;
+}
+
+export interface PaymentEvent {
+  amount: number;
+  status: string;
+  userId: string;
+  orderId: string;
+  paymentId: number;
+  timestamp: string;
+  event_type: string;
+  paymentMethod: string;
+  transactionId: string;
+}
