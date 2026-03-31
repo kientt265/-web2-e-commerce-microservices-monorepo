@@ -1,0 +1,55 @@
+{
+  "version": 4,
+  "terraform_version": "1.14.7",
+  "serial": 269,
+  "lineage": "9acdeeea-47de-291f-3a3d-8e8b29147c5d",
+  "outputs": {},
+  "resources": [
+    {
+      "module": "module.ecr",
+      "mode": "managed",
+      "type": "aws_ecr_repository",
+      "name": "repos",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "index_key": "auth-db",
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ecr:ap-southeast-1:582719176716:repository/auth-db",
+            "encryption_configuration": [
+              {
+                "encryption_type": "AES256",
+                "kms_key": ""
+              }
+            ],
+            "force_delete": null,
+            "id": "auth-db",
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": true
+              }
+            ],
+            "image_tag_mutability": "MUTABLE",
+            "name": "auth-db",
+            "registry_id": "582719176716",
+            "repository_url": "582719176716.dkr.ecr.ap-southeast-1.amazonaws.com/auth-db",
+            "tags": {
+              "Environment": "production",
+              "Project": "ecommerce"
+            },
+            "tags_all": {
+              "Environment": "production",
+              "Project": "ecommerce"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}
