@@ -49,3 +49,24 @@ variable "services" {
     "frontend"
   ]
 }
+
+variable "databases" {
+  description = "List of databases"
+  type        = list(string)
+  default     = [
+    "auth-db",
+    "cart-db",
+    "delivery-db",
+    "inventory-db",
+    "order-db",
+    "payment-db",
+    "product-db",
+    "rating-db"
+  ]
+}
+
+variable "infrastructure" {
+  description = "List of infrastructure"
+  type        = list(string)
+  default     = ["kafka", "kafka-connect"]
+}

@@ -41,7 +41,9 @@ module "eks" {
 module "ecr" {
   source = "./modules/ecr"
 
-  services = var.services
+  services       = var.services
+  databases      = var.databases
+  infrastructure = var.infrastructure
 }
 
 data "aws_eks_cluster_auth" "cluster" {
