@@ -8,7 +8,7 @@ dotenv.config();
 const prisma = new PrismaClient();
 const app = express();
 const port = process.env.AUTH_PORT || 3001;
-
+//test
 const allowedOrigins =
   process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean) ??
   ['http://localhost:5173'];
