@@ -8,7 +8,9 @@ spec:
   source:
     repoURL: 'https://github.com/kientt265/e-commerce-gitops-config.git'
     targetRevision: HEAD
-    path: services
+    path: .
+    directory:
+      recurse: true
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: default
