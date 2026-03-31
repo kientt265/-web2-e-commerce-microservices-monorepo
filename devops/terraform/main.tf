@@ -41,5 +41,40 @@ module "eks" {
 module "ecr" {
   source = "./modules/ecr"
 
-  services = var.services
+  services       = var.services
+  databases      = var.databases
+  infrastructure = var.infrastructure
+}
+
+data "aws_eks_cluster_auth" "cluster" {
+  name = module.eks.cluster_name
+}
+
+provider "helm" {
+  kubernetes {
+    host                   = module.eks.cluster_endpoint
+    cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+    token                  = data.aws_eks_cluster_auth.cluster.token
+  }
+}
+
+resource "helm_release" "argocd" {
+  name             = "argocd"
+  repository       = "https://argoproj.github.io/argo-helm"
+  chart            = "argo-cd"
+  namespace        = "argocd"
+  create_namespace = true
+  version          = "5.46.7"
+
+  set {
+    name  = "server.service.type"
+    value = "LoadBalancer"
+  }
+
+  set {
+    name  = "global.nodeSelector.workload_type"
+    value = "stateful"
+  }
+
+  depends_on = [module.eks]
 }

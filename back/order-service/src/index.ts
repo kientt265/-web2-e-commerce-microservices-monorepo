@@ -8,9 +8,9 @@ import { KafkaConsumerService } from './services/kafkaConsumerService';
 import orderRoutes from './routes/orderRoutes';
 import paymentRoutes from './routes/paymentRoutes';
 import { openApiSpec } from './openapi';
-// test push to ECR
+//test
 dotenv.config();
-
+ 
 const prisma = new PrismaClient();
 const app = express();
 const port = process.env.ORDER_PORT || 3003;
