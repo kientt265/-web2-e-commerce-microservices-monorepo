@@ -11,7 +11,7 @@ pipeline {
         AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')
         ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         // Mapping: ecr-repo-name=public-image-tag
-        INFRA_IMAGES = "auth-db=postgres:15-alpine cart-db=redis:7.0-alpine delivery-db=postgres:15-alpine inventory-db=postgres:15-alpine order-db=postgres:15-alpine payment-db=postgres:15-alpine product-db=postgres:15-alpine rating-db=postgres:15-alpine kafka=bitnami/kafka:3.4 kafka-connect=bitnami/kafka-connect:3.4"
+        INFRA_IMAGES = "auth-db=postgres:15-alpine cart-db=redis:7.0-alpine delivery-db=postgres:15-alpine inventory-db=postgres:15-alpine order-db=postgres:15-alpine payment-db=postgres:15-alpine product-db=postgres:15-alpine rating-db=postgres:15-alpine kafka=confluentinc/cp-kafka:7.5.0 kafka-connect=debezium/connect:2.5 zookeeper=confluentinc/cp-zookeeper:7.5.0"
         CONFIG_REPO = 'e-commerce-gitops-config'
         GITHUB_USER = 'kientt265'
     }

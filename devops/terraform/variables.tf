@@ -68,5 +68,5 @@ variable "databases" {
 variable "infrastructure" {
   description = "List of infrastructure"
   type        = list(string)
-  default     = ["kafka", "kafka-connect"]
+  default     = ["kafka", "kafka-connect", "zookeeper"]
 }
