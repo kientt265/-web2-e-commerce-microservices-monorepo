@@ -6,9 +6,7 @@ pipeline {
         disableConcurrentBuilds()
     }
 
-    triggers {
-        githubPush()
-    }
+
 
     environment {
         AWS_REGION = 'ap-southeast-1'
