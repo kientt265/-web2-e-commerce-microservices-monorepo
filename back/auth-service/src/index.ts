@@ -4,7 +4,6 @@ import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/authRoutes';
 import dotenv from "dotenv";
 import cookieParser from 'cookie-parser';
-//test
 dotenv.config();
 const prisma = new PrismaClient();
 const app = express();
