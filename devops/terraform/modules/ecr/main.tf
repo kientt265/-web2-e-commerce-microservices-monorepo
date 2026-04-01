@@ -1,9 +1,5 @@
-locals {
-  all_repos = concat(var.services, var.databases, var.infrastructure)
-}
-
 resource "aws_ecr_repository" "repos" {
-  for_each = toset(local.all_repos)
+  for_each = toset(var.services)
   name     = each.key
 
   image_scanning_configuration {
@@ -17,14 +13,6 @@ resource "aws_ecr_repository" "repos" {
 }
 
 variable "services" {
-  type = list(string)
-}
-
-variable "databases" {
-  type = list(string)
-}
-
-variable "infrastructure" {
   type = list(string)
 }
 

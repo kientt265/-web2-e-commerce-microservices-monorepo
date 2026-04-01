@@ -35,8 +35,8 @@ spec:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: db-secrets
-              key: auth-db-url
+              name: auth-db-secret
+              key: DATABASE_URL
         - name: AUTH_PORT
           value: "3001"
 ---

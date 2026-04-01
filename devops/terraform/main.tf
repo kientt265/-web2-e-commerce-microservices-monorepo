@@ -42,8 +42,21 @@ module "ecr" {
   source = "./modules/ecr"
 
   services       = var.services
-  databases      = var.databases
-  infrastructure = var.infrastructure
+}
+
+module "rds" {
+  source = "./modules/rds"
+
+  databases       = var.databases
+  vpc_id          = module.vpc.vpc_id
+  private_subnets = module.vpc.private_subnets
+}
+
+module "msk" {
+  source = "./modules/msk"
+
+  vpc_id          = module.vpc.vpc_id
+  private_subnets = module.vpc.private_subnets
 }
 
 data "aws_eks_cluster_auth" "cluster" {
@@ -66,15 +79,33 @@ resource "helm_release" "argocd" {
   create_namespace = true
   version          = "5.46.7"
 
-  set {
-    name  = "server.service.type"
-    value = "LoadBalancer"
-  }
+  values = [
+    <<-EOT
+    server:
+      service:
+        type: LoadBalancer
+    global:
+      nodeSelector:
+        workload_type: stateful
+    EOT
+  ]
 
-  set {
-    name  = "global.nodeSelector.workload_type"
-    value = "stateful"
-  }
+  depends_on = [module.eks]
+}
+
+resource "helm_release" "external_secrets" {
+  name             = "external-secrets"
+  repository       = "https://charts.external-secrets.io"
+  chart            = "external-secrets"
+  namespace        = "external-secrets"
+  create_namespace = true
+  version          = "0.9.8"
+
+  values = [
+    <<-EOT
+    installCRDs: true
+    EOT
+  ]
 
   depends_on = [module.eks]
 }

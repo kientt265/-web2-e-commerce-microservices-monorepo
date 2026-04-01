@@ -64,9 +64,3 @@ variable "databases" {
     "rating-db"
   ]
 }
-
-variable "infrastructure" {
-  description = "List of infrastructure"
-  type        = list(string)
-  default     = ["kafka", "kafka-connect", "zookeeper"]
-}

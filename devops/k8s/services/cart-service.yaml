@@ -35,8 +35,8 @@ spec:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: db-secrets
-              key: cart-db-url
+              name: cart-db-secret
+              key: DATABASE_URL
         - name: CART_PORT
           value: "3001"
 ---

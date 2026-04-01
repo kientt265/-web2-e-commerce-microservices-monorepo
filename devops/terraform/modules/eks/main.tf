@@ -156,3 +156,43 @@ output "cluster_name" {
 output "cluster_certificate_authority_data" {
   value = aws_eks_cluster.main.certificate_authority[0].data
 }
+
+data "aws_iam_policy_document" "external_secrets_sa_assume_role_policy" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [replace(aws_eks_cluster.main.identity[0].oidc[0].issuer, "https://", "")]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${aws_eks_cluster.main.identity[0].oidc[0].issuer}:sub"
+      values   = ["system:serviceaccount:external-secrets:external-secrets"]
+    }
+  }
+}
+
+resource "aws_iam_role" "external_secrets_sa" {
+  name               = "${var.cluster_name}-external-secrets-sa-role"
+  assume_role_policy = data.aws_iam_policy_document.external_secrets_sa_assume_role_policy.json
+}
+
+resource "aws_iam_policy" "external_secrets_sa_policy" {
+  name        = "${var.cluster_name}-external-secrets-sa-policy"
+  description = "Allow External Secrets to access secrets manager"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+        Effect   = "Allow"
+        Resource = "*"
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "external_secrets_sa_policy_attachment" {
+  role       = aws_iam_role.external_secrets_sa.name
+  policy_arn = aws_iam_policy.external_secrets_sa_policy.arn
+}
