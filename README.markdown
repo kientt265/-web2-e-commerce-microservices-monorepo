@@ -1,243 +1,470 @@
 # E-commerce Microservices Monorepo
 
-This project is a comprehensive e-commerce system built with a distributed microservices architecture, now organized as a monorepo. It leverages Kafka as a message broker for inter-service communication, ensuring data consistency and scalability. The system has evolved to include robust logging with the ELK Stack and a highly available API Gateway managed by Nginx.
+A comprehensive e-commerce platform built with **distributed microservices architecture**, featuring **event-driven communication** via Kafka, **Saga pattern** for distributed transactions, and **Redis caching** for high-performance inventory management.
 
-![Alt text](../web2-e-comerce-microservices/front/public/flow_diagram.png "Tooltip optional")
+![Saga Transaction Flow](./front/public/diagram_flow.png)
+*Saga Pattern: Order creation flow with inventory check, payment, and delivery orchestration*
 
+![CI/CD Architecture](./front/public/cicd.png)
+*CI/CD Pipeline: Jenkins, Docker Registry, and Kubernetes deployment workflow*
 
-## Project Overview
+---
 
-This application is composed of several microservices, each responsible for a specific business domain, along with infrastructure components for logging and API management:
+## Table of Contents
 
-*   **User Service:** Manages user information, authentication, and authorization.
-*   **Product Service:** Handles product information, categories, and inventory.
-*   **Cart Service:** Manages temporary shopping carts using Redis for high-speed data access.
-*   **Order Service:** Processes orders, manages payment flows, and tracks order history.
-*   **Payment Service:** Integrates with VNPay for secure and efficient payment processing.
-*   **Search Service:** Utilizes Elasticsearch for fast and efficient product search capabilities.
-*   **Mail Service:** Sends email notifications to users, particularly for new order confirmations, using SMTP.
-*   **API Gateway:** A central entry point for all client requests, routing them to the appropriate microservices. Managed by multiple instances for high availability.
-*   **Nginx Load Balancer:** Distributes incoming traffic across multiple API Gateway instances, ensuring high availability and fault tolerance.
-*   **ELK Stack (Elasticsearch, Logstash, Kibana):** A powerful suite for centralized logging, enabling efficient collection, parsing, storage, and visualization of logs from all microservices.
+- [Architecture Overview](#architecture-overview)
+- [Microservices](#microservices)
+- [Technology Stack](#technology-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Development Guide](#development-guide)
+- [Deployment](#deployment)
+- [License](#license)
 
-## Technologies Used
+---
 
-This project incorporates a variety of modern technologies to ensure robustness, scalability, performance, and observability:
+## Architecture Overview
 
-*   **Languages:** Node.js (TypeScript), Python
-*   **Frameworks:** Express (for Node.js services), FastAPI (for Python services)
-*   **Databases:** PostgreSQL (for persistent data storage), Redis (for caching and temporary data like shopping carts)
-*   **Message Broker:** Apache Kafka (for asynchronous communication and event streaming)
-*   **Change Data Capture (CDC):** Debezium (for capturing row-level changes in databases and streaming them to Kafka)
-*   **Search Engine:** Elasticsearch (for full-text search and analytics on product data)
-*   **Payment Gateway:** VNPay (a popular payment solution in Vietnam)
-*   **Email Protocol:** SMTP (for sending transactional emails)
-*   **API Gateway:** (Specific technology if known, otherwise generic term)
-*   **Load Balancer:** Nginx
-*   **Logging & Monitoring:** Elasticsearch, Logstash, Kibana (ELK Stack)
-*   **Containerization:** Docker, Docker Compose (for defining and running multi-container Docker applications)
-
-## Architecture Diagram
-
-(An updated architecture diagram illustrating the microservices, their interactions, data flows, the API Gateway with Nginx Load Balancer, and the ELK Stack for centralized logging would be placed here. This would typically show Kafka as the central message bus, with services communicating through it, and separate databases for each service where applicable, along with Elasticsearch, Redis, Mail Service, and the new infrastructure components.)
-
-## Prerequisites
-
-To set up and run this project, ensure you have the following installed on your system:
-
-*   **Docker**: Version 20.10 or later.
-*   **Docker Compose**: Version 2.0 or later.
-
-Verify your installations by running:
-
-```shell
-docker --version
-docker-compose --version
 ```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           CLIENT LAYER                                      │
+│  ┌─────────────┐                                                            │
+│  │  React App  │  (Vite + TypeScript)                                       │
+│  └──────┬──────┘                                                            │
+└─────────┼───────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         API GATEWAY / LOAD BALANCER                         │
+│                    (Nginx / Kubernetes Ingress)                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      MICROSERVICES LAYER                                    │
+│                                                                             │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐          │
+│  │  Auth    │ │ Product  │ │  Order   │ │   Cart   │ │ Inventory│          │
+│  │ Service  │ │ Service  │ │ Service  │ │ Service  │ │ Service  │          │
+│  │  :3001   │ │  :3002   │ │  :3003   │ │  :3004   │ │  :3005   │          │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘          │
+│       │            │            │            │            │               │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐                                     │
+│  │ Delivery │ │  Rating  │ │ Payment  │                                     │
+│  │ Service  │ │ Service  │ │ Service  │                                     │
+│  │  :3006   │ │  :3007   │ │  :3008   │                                     │
+│  └────┬─────┘ └──────────┘ └────┬─────┘                                     │
+│       │                          │                                          │
+└───────┼──────────────────────────┼──────────────────────────────────────────┘
+        │                          │
+        │    ┌─────────────────────┘
+        │    │
+        ▼    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      MESSAGE BROKER (Kafka)                                 │
+│                                                                             │
+│   ┌──────────────┐    ┌──────────────┐    ┌──────────────────────────┐    │
+│   │   kafka-1    │◄──►│   kafka-2    │    │     kafka-connect        │    │
+│   │   :9092      │    │   :9093      │    │     (Debezium CDC)       │    │
+│   └──────────────┘    └──────────────┘    └──────────────────────────┘    │
+│          ▲                                               │                   │
+│     ┌────┴────┐                                         │ CDC              │
+│     │Zookeeper│                                         ▼                  │
+│     │  :2181  │                              ┌───────────────────┐         │
+│     └─────────┘                              │  PostgreSQL DBs   │         │
+│                                              │  (wal_level=logical)       │
+│                                              └───────────────────┘         │
+│                                                                             │
+│   Topics: order-events, payment-events, delivery-events,                   │
+│           inventory-events, product-events                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      DATA LAYER                                             │
+│                                                                             │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐     │
+│   │  auth-db │  │product-db│  │ order-db │  │  cart-db │  │inventory-│     │
+│   │  :5434   │  │  :5435   │  │  :5436   │  │  :5437   │  │   db     │     │
+│   └──────────┘  └──────────┘  └──────────┘  └──────────┘  │  :5438   │     │
+│                                                           └──────────┘     │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐                                 │
+│   │delivery- │  │ rating-  │  │ payment- │  ┌──────────┐                    │
+│   │  db      │  │   db     │  │   db     │  │  Redis   │                    │
+│   │  :5439   │  │  :5440   │  │  :5441   │  │  :6379   │  (Inventory Cache) │
+│   └──────────┘  └──────────┘  └──────────┘  └──────────┘                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Microservices
+
+| Service | Port | Database | Redis | Kafka | Description |
+|---------|------|----------|-------|-------|-------------|
+| **Auth Service** | 3001 | auth-db | - | - | JWT authentication, user management |
+| **Product Service** | 3002 | product-db | - | ✅ | Product catalog, categories |
+| **Order Service** | 3003 | order-db | - | ✅ | Order processing, orchestration |
+| **Cart Service** | 3004 | cart-db | - | - | Shopping cart management |
+| **Inventory Service** | 3005 | inventory-db | ✅ | ✅ | Stock management, reservation |
+| **Delivery Service** | 3006 | delivery-db | - | ✅ | Shipping, delivery tracking |
+| **Rating Service** | 3007 | rating-db | - | ✅ | Product reviews, ratings |
+| **Payment Service** | 3008 | payment-db | - | ✅ | VNPay integration |
+
+### Key Features
+
+- **🔐 Auth Service**: JWT-based authentication, user registration/login
+- **📦 Product Service**: Product CRUD, categories, search integration
+- **🛒 Order Service**: Order creation, Saga pattern, inventory pre-check
+- **🛍️ Cart Service**: Persistent shopping cart per user
+- **📊 Inventory Service**: Real-time stock with Redis cache, atomic reservation via Lua scripts
+- **🚚 Delivery Service**: Delivery status tracking, courier assignment
+- **⭐ Rating Service**: Product reviews with moderation
+- **💳 Payment Service**: VNPay sandbox integration, payment callbacks
+
+---
+
+## Technology Stack
+
+### Backend
+- **Node.js** 20+ with **TypeScript**
+- **Express.js** / **Fastify** (REST API)
+- **Prisma ORM** (Database management)
+- **JWT** (Authentication)
+
+### Frontend
+- **React** 19 with **TypeScript**
+- **Vite** (Build tool)
+- Modern ES2022+ features
+
+### Infrastructure
+- **Kafka** 3.5+ (Event streaming, 2 brokers for HA)
+- **Zookeeper** (Kafka coordination)
+- **Debezium** (Change Data Capture from PostgreSQL)
+- **Redis** 7+ (Inventory caching)
+
+### Databases
+- **PostgreSQL** 15 (Per-service database, WAL logical for CDC)
+- Each service owns its database (Database-per-service pattern)
+
+### DevOps & Deployment
+- **Docker** + **Docker Compose** (Local development)
+- **Kubernetes** (Container orchestration)
+- **ArgoCD** (GitOps continuous delivery)
+- **Jenkins** (CI/CD pipelines)
+- **Terraform** (Infrastructure as Code)
+- **Ansible** (Configuration management)
+
+---
 
 ## Project Structure
 
-The repository is organized as a monorepo, with several top-level directories representing different components of the system:
-
 ```
--web2-e-commerce-microservices-monorepo/
-├── back/                         # Contains backend microservices (e.g., User, Product, Order, Cart, Payment, Mail)
+web2-e-commerce-microservices-monorepo/
+├── back/                           # Backend microservices
+│   ├── auth-service/               # Authentication (Port 3001)
+│   ├── product-service/            # Product catalog (Port 3002)
+│   ├── order-service/              # Order processing (Port 3003)
+│   ├── cart-service/               # Shopping cart (Port 3004)
+│   ├── inventory-service/          # Stock management (Port 3005)
+│   ├── delivery-service/           # Shipping (Port 3006)
+│   ├── rating-service/             # Reviews (Port 3007)
+│   └── payment-service/            # VNPay integration (Port 3008)
+│
+├── front/                          # React frontend (Vite)
 │   ├── src/
-│   └── ...
-├── front/                        # Frontend application (e.g., React, Angular, Vue.js)
-│   ├── src/
-│   └── ...
-├── devops/                       # Contains infrastructure configurations (e.g., Nginx, ELK Stack)
-│   ├── nginx/                    # Nginx configurations for API Gateway load balancing
-│   ├── elk/                      # ELK Stack configurations (Logstash pipelines, Kibana dashboards)
-│   └── ...
-├── docker-compose.yml            # Main Docker Compose configuration for all services and infrastructure
-├── create-topics.sh              # Script to create Kafka topics
-├── .gitignore                    # Git ignore file
-├── README.markdown               # Project documentation
-└── ...
+│   ├── public/                     # Diagrams & assets
+│   └── package.json
+│
+├── devops/                         # DevOps configurations
+│   ├── k8s/                        # Kubernetes manifests
+│   ├── terraform/                  # Infrastructure as Code
+│   ├── ansible/                    # Server configuration
+│   ├── argocd/                     # GitOps application configs
+│   └── Jenkinsfile                 # CI/CD pipeline
+│
+├── connectors/                     # Debezium connector configs
+├── scripts/                        # Helper scripts
+├── docker-compose.yml              # Local orchestration
+└── README.markdown                 # This file
 ```
 
-## Setup and Running the Project
+---
 
-Follow these steps to get the e-commerce microservices system up and running using Docker:
+## Getting Started
 
-### 1. Clone the Repository
+### Prerequisites
 
-First, clone the project repository to your local machine:
+- **Docker** 24.0+ and **Docker Compose** 2.0+
+- **Node.js** 20+ (for local development)
+- **pnpm** or **npm**
 
-```shell
-git clone https://github.com/kientt265/-web2-e-commerce-microservices-monorepo.git
-cd -web2-e-commerce-microservices-monorepo
+```bash
+# Verify installations
+docker --version
+docker-compose --version
+node --version
 ```
 
-### 2. Build and Start the Services
+### Quick Start
 
-Navigate to the project root directory and use Docker Compose to build and start all defined services and infrastructure components. This command will pull necessary images, build custom service images, and start all containers in detached mode.
+```bash
+# 1. Clone repository
+git clone https://github.com/kientt265/web2-e-commerce-microservices-monorepo.git
+cd web2-e-commerce-microservices-monorepo
 
-```shell
+# 2. Create environment file
+cp .env.example .env
+# Edit .env with your configurations
+
+# 3. Start all services
 docker-compose up --build -d
-```
 
-*   `--build`: Rebuilds service images (e.g., for `back`, `front`, `api-gateway`, `logstash` services) from their respective Dockerfiles.
-*   `-d`: Runs containers in detached mode, allowing them to run in the background.
+# 4. Register Debezium connectors
+./scripts/register-connector.sh
 
-This process will:
-
-*   Pull images for PostgreSQL, Kafka, Zookeeper, Elasticsearch, Redis, Debezium, Nginx, Logstash, and Kibana.
-*   Build custom images for your Node.js/TypeScript and Python microservices, as well as any custom API Gateway or logging components.
-*   Start all containers and connect them via a Docker network.
-
-### 3. Create Kafka Topics
-
-After the services are up, you need to create the necessary Kafka topics for inter-service communication. A convenience script `create-topics.sh` is provided for this purpose:
-
-```shell
-./create-topics.sh
-```
-
-This script typically contains commands to create topics such as `product-events`, `order-events`, `payment-events`, `cart-events`, `mail-events`, and potentially `log-events` if logs are streamed to Kafka before Logstash.
-
-### 4. Verify Services
-
-To ensure all services and infrastructure components are running correctly, you can check the status of your Docker containers:
-
-```shell
+# 5. Verify services
 docker ps
 ```
 
-You should see a list of running containers, including those for PostgreSQL, Kafka, Zookeeper, Elasticsearch, Redis, Debezium, Nginx, Logstash, Kibana, and your custom microservices (e.g., `user-service`, `product-service`, `cart-service`, `order-service`, `payment-service`, `search-service`, `mail-service`, `api-gateway`).
+### Service Ports
 
-To view logs for a specific service (e.g., `product-service`):
+| Service | External Port | Internal Port | Database Port |
+|---------|--------------|---------------|---------------|
+| Auth Service | 3001 | 3001 | 5434 |
+| Product Service | 3002 | 3001 | 5435 |
+| Order Service | 3003 | 3001 | 5436 |
+| Cart Service | 3004 | 3001 | 5437 |
+| Inventory Service | 3005 | 3001 | 5438 |
+| Delivery Service | 3006 | 3001 | 5439 |
+| Rating Service | 3007 | 3001 | 5440 |
+| Payment Service | 3008 | 3001 | 5441 |
+| Kafka Broker 1 | 9092 | 9092 | - |
+| Kafka Broker 2 | 9093 | 9092 | - |
+| Zookeeper | 2181 | 2181 | - |
+| Redis | 6379 | 6379 | - |
 
-```shell
-docker logs <container_name_or_id>
+---
+
+## Development Guide
+
+### Running Individual Services
+
+```bash
+# Start only infrastructure
+docker-compose up -d zookeeper kafka-1 kafka-2 redis
+
+# Start a specific service
+docker-compose up -d order-service
+
+# View logs
+docker-compose logs -f order-service
 ```
 
-Replace `<container_name_or_id>` with the actual name or ID of the service container you want to inspect.
+### Database Migrations
 
-### 5. Access the Application
+```bash
+# Run migrations for a service
+cd back/order-service
+npx prisma migrate dev
 
-Once all services are running, you can access the frontend application (if available) via your web browser, typically at `http://localhost:<frontend_port>`. All API requests should now go through the Nginx Load Balancer and API Gateway, usually accessible at `http://localhost:<nginx_port>`.
-
-Kibana dashboard for log visualization will typically be available at `http://localhost:5601`.
-
-### 6. Stopping the Services
-
-To stop and remove all running containers and their associated networks:
-
-```shell
-docker-compose down
+# Generate Prisma client
+npx prisma generate
 ```
 
-To also remove volumes (e.g., PostgreSQL data, Elasticsearch data), which will delete all persistent data, add the `-v` flag:
+### Kafka Topics
 
-```shell
-docker-compose down -v
+The following topics are used for inter-service communication:
+
+| Topic | Producer | Consumers | Purpose |
+|-------|----------|-----------|---------|
+| `order-events` | Order Service | Inventory, Payment, Delivery | Order lifecycle |
+| `payment-events` | Payment Service | Order Service | Payment status |
+| `delivery-events` | Delivery Service | Order, Inventory | Shipping updates |
+| `product-events` | Product Service | Search, Inventory | Product changes |
+
+### Inventory Flow (Redis + Saga)
+
+```
+1. Order Service calls Inventory API
+   POST /inventories/product/{idd}/reserve
+
+2. Inventory Service (Lua script - atomic):
+   - Check stock in Redis
+   - Reserve if available
+   - Update DB (reserved_checkout, quantity)
+
+3. Order creation proceeds
+
+4. On payment success:
+   - reserved_checkout → reserved_shipping
+
+5. On delivery success:
+   - reserved_shipping decremented
+
+6. On failure/cancellation:
+   - Release stock back to Redis & DB
 ```
 
-**Note**: Use `-v` with caution, as it will permanently delete all data stored by the services. Only use it if you intend to reset the entire system.
+---
 
-## Database Schema
+## Deployment
 
-Each microservice typically manages its own database schema. For example:
+### Docker Compose (Local/Staging)
 
-*   **User Service Database (PostgreSQL):**
-    *   `users`: Stores user profiles (e.g., `user_id`, `username`, `email`, `password_hash`, `address`).
-    *   `roles`: Defines user roles and permissions.
-*   **Product Service Database (PostgreSQL):**
-    *   `products`: Stores product details (e.g., `product_id`, `name`, `description`, `price`, `stock`, `category_id`).
-    *   `categories`: Defines product categories.
-*   **Order Service Database (PostgreSQL):**
-    *   `orders`: Stores order information (e.g., `order_id`, `user_id`, `order_date`, `total_amount`, `status`).
-    *   `order_items`: Details of items within an order.
+```bash
+# Production mode (no dev volumes)
+docker-compose -f docker-compose.yml up -d
 
-Redis is used for the Cart Service to store temporary shopping cart data, which is typically a key-value store where keys could be `user_id` and values are serialized cart contents.
+# With logging stack
+docker-compose -f docker-compose.yml -f docker-compose.logging.yml up -d
+```
 
-## Kafka Configuration
+### Kubernetes (Production)
 
-Kafka is central to the inter-service communication. Key topics include:
+```bash
+# Apply manifests
+cd devops/k8s
+kubectl apply -f namespace.yaml
+kubectl apply -f configmaps/
+kubectl apply -f secrets/
+kubectl apply -f deployments/
+kubectl apply -f services/
+kubectl apply -f ingress/
 
-*   `product-events`: For product-related events (e.g., product created, updated, deleted).
-*   `order-events`: For order-related events (e.g., order placed, order status updated).
-*   `payment-events`: For payment-related events (e.g., payment successful, payment failed).
-*   `cart-events`: For shopping cart events (e.g., item added to cart, item removed from cart).
-*   `mail-events`: For events triggering email notifications (e.g., new order confirmation).
-*   `log-events`: (Optional) For streaming application logs to Logstash.
+# Verify
+kubectl get pods -n e-commerce
+```
 
-These topics are created by the `create-topics.sh` script. You can inspect Kafka topics using Kafka command-line tools if needed.
+### ArgoCD (GitOps)
 
-## Debezium (Change Data Capture)
+```bash
+# Apply ArgoCD application
+kubectl apply -f devops/argocd/application.yaml
 
-Debezium is configured to capture changes from the PostgreSQL databases (e.g., `products` table in Product Service) and stream these changes as events to Kafka topics. This enables other services, like the Search Service, to react to data changes in real-time.
+# Sync via UI or CLI
+argocd app sync e-commerce
+```
 
-## Elasticsearch
+### Terraform (Infrastructure)
 
-The Search Service indexes product data into Elasticsearch. This allows for powerful and fast full-text search capabilities, including filtering, sorting, and faceting. The data is kept in sync with the Product Service database via Debezium and Kafka.
+```bash
+cd devops/terraform
+terraform init
+terraform plan
+terraform apply
+```
 
-## VNPay Integration
+---
 
-The Payment Service integrates with VNPay, a popular payment gateway. This integration handles the secure redirection of users to the VNPay portal for payment, and processes the callback from VNPay to update order statuses.
+## Architecture Patterns
 
-## Mail Service
+### 1. Database Per Service
+Each microservice owns its private database, ensuring loose coupling and independent scaling.
 
-The Mail Service is responsible for sending email notifications to users. It listens for specific events on Kafka (e.g., `order-events` for new order confirmations) and uses SMTP to send out emails. This ensures users receive timely updates regarding their interactions with the e-commerce system.
+### 2. Saga Pattern (Orchestration)
+Order Service orchestrates distributed transactions:
+- Reserve inventory → Create order → Process payment → Ship
+- On failure: Compensating transactions (release stock, cancel order)
 
-## ELK Stack for Centralized Logging
+### 3. CQRS with CDC
+- **Command**: Write to PostgreSQL
+- **Query**: Read from Elasticsearch (via Debezium CDC)
 
-The ELK Stack (Elasticsearch, Logstash, Kibana) is integrated for comprehensive log management and analysis:
+### 4. Cache-Aside with Redis
+Inventory Service uses Redis for hot stock data:
+- Read from cache, fallback to DB
+- Write-through to both cache and DB
+- Lua scripts for atomic operations
 
-*   **Logstash:** Collects logs from all microservices, parses them, and transforms them into a structured format before sending them to Elasticsearch. It can receive logs directly or via Kafka (`log-events` topic).
-*   **Elasticsearch:** Stores and indexes the processed logs, making them searchable and analyzable in real-time.
-*   **Kibana:** Provides a powerful web interface for visualizing, exploring, and managing the logs stored in Elasticsearch. Custom dashboards can be created to monitor system health, identify issues, and gain insights into application behavior.
+### 5. Event-Driven Architecture
+Services communicate via Kafka:
+- Async processing
+- Event sourcing
+- Loose coupling
 
-This centralized logging solution significantly improves observability and simplifies troubleshooting in a distributed microservices environment.
+---
 
-## API Gateway and Nginx Load Balancer
+## Monitoring & Observability
 
-To manage incoming requests and ensure high availability, the system employs an API Gateway fronted by an Nginx Load Balancer:
+### Health Checks
 
-*   **API Gateway:** Acts as a single entry point for all external clients. It handles request routing, composition, and protocol translation, abstracting the underlying microservices architecture from the clients. Multiple instances of the API Gateway can be deployed for redundancy.
-*   **Nginx Load Balancer:** Sits in front of the API Gateway instances, distributing incoming client requests evenly across them. This provides fault tolerance (if one API Gateway instance fails, Nginx routes traffic to others) and improves overall system performance by preventing any single gateway from becoming a bottleneck. Nginx also handles SSL termination and can provide basic security features.
+```bash
+# Service health
+curl http://localhost:3001/health
+curl http://localhost:3005/health
 
-This setup ensures that the system is robust, scalable, and resilient to failures, providing a seamless experience for end-users.
+# Kafka health
+kafka-broker-api-versions.sh --bootstrap-server localhost:9092
+```
+
+### Logging
+
+- **Structured JSON logs** from all services
+- **Centralized logging** via ELK/Loki
+- **Correlation IDs** for distributed tracing
+
+---
+
+## API Documentation
+
+### Auth Service (3001)
+```
+POST   /auth/register
+POST   /auth/login
+POST   /auth/refresh
+GET    /auth/me
+```
+
+### Product Service (3002)
+```
+GET    /products
+GET    /products/:id
+POST   /products
+PUT    /products/:id
+DELETE /products/:id
+```
+
+### Order Service (3003)
+```
+POST   /orders              # Creates order with inventory check
+GET    /orders/:id
+GET    /orders/user/:userId
+GET    /orders/:id/status
+```
+
+### Inventory Service (3005)
+```
+POST   /inventories/product/:productId/reserve  # Redis-based
+POST   /inventories/product/:productId/release  # Rollback
+GET    /inventories/product/:productId
+```
+
+---
 
 ## Contributing
 
-Contributions are welcome! If you'd like to contribute to this project, please follow these steps:
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature/amazing-feature`
+3. Commit changes: `git commit -m 'Add amazing feature'`
+4. Push to branch: `git push origin feature/amazing-feature`
+5. Open Pull Request
 
-1.  Fork the repository.
-2.  Create a new branch for your feature or bug fix.
-3.  Make your changes and ensure they adhere to the project's coding standards.
-4.  Write clear and concise commit messages.
-5.  Push your changes to your forked repository.
-6.  Submit a pull request to the `master` branch of this repository.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+
+---
 
 ## License
 
-(Add license information here, e.g., MIT License, Apache 2.0 License, etc.)
+This project is licensed under the MIT License.
+
+---
 
 ## Acknowledgements
 
-(Optional: Acknowledge any libraries, tools, or individuals that have significantly contributed to the project.)
-
+- [Apache Kafka](https://kafka.apache.org/)
+- [Debezium](https://debezium.io/)
+- [Prisma](https://www.prisma.io/)
+- [VNPay](https://vnpay.vn/)
+- [Kubernetes](https://kubernetes.io/)
+- [ArgoCD](https://argo-cd.readthedocs.io/)
