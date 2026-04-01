@@ -61,6 +61,10 @@ pipeline {
                                 docker tag ${ECR_REGISTRY}/${service}:latest ${ECR_REGISTRY}/${service}:${tag}
                                 docker push ${ECR_REGISTRY}/${service}:latest
                                 docker push ${ECR_REGISTRY}/${service}:${tag}
+
+                                # Dọn dẹp local images sau khi đã push thành công
+                                docker rmi ${ECR_REGISTRY}/${service}:latest || true
+                                docker rmi ${ECR_REGISTRY}/${service}:${tag} || true
                             """
                         }
 
