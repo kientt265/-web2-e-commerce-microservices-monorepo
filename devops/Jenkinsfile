@@ -61,27 +61,33 @@ pipeline {
                                 docker tag ${ECR_REGISTRY}/${service}:latest ${ECR_REGISTRY}/${service}:${tag}
                                 docker push ${ECR_REGISTRY}/${service}:latest
                                 docker push ${ECR_REGISTRY}/${service}:${tag}
-
-                                docker rmi ${ECR_REGISTRY}/${service}:latest || true
-                                docker rmi ${ECR_REGISTRY}/${service}:${tag} || true
-                                docker image prune -af || true          
                             """
+                        }
 
-                            echo "Đang cập nhật image tag cho ${service} trong repo ${CONFIG_REPO}..."
+                        if (!changedServices.isEmpty()) {
+                            echo "Đang cập nhật image tags cho các service thay đổi trong repo ${CONFIG_REPO}..."
                             sh """
                                 rm -rf ${CONFIG_REPO}
                                 git clone https://${GITHUB_TOKEN}@github.com/${GITHUB_USER}/${CONFIG_REPO}.git
                                 cd ${CONFIG_REPO}
                                 
-                                # Cập nhật tag image trong file YAML tương ứng (Giả sử file nằm trong services/)
-                                sed -i "s|image: ${ECR_REGISTRY}/${service}:.*|image: ${ECR_REGISTRY}/${service}:${tag}|g" services/${service}.yaml
-                                
                                 git config user.email "jenkins@example.com"
                                 git config user.name "Jenkins CI"
-                                git add services/${service}.yaml
-                                git commit -m "chore: update ${service} image tag to ${tag} [skip ci]"
+
+                                for service in ${changedServices.join(' ')}; do
+                                    tag="${BRANCH_NAME}-${BUILD_NUMBER}"
+                                    echo "Cập nhật tag cho \${service} thành \${tag}"
+                                    # Cập nhật tag image trong file YAML tương ứng
+                                    sed -i "s|image: ${ECR_REGISTRY}/\${service}:.*|image: ${ECR_REGISTRY}/\${service}:\${tag}|g" services/\${service}.yaml
+                                    git add services/\${service}.yaml
+                                done
+                                
+                                git commit -m "chore: update services image tags to ${BRANCH_NAME}-${BUILD_NUMBER} [skip ci]" || echo "No changes to commit"
                                 git push origin master
                             """
+                            
+                            // Dọn dẹp image sau khi hoàn tất tất cả các service
+                            sh "docker image prune -af || true"
                         }
                     }
                 }

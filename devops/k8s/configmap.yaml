@@ -3,4 +3,4 @@ kind: ConfigMap
 metadata:
   name: kafka-config
 data:
-  KAFKA_BROKER_1: "b-1.xxxxxxxxxx.kafka.ap-southeast-1.amazonaws.com:9092"
+  KAFKA_BROKER_1: "b-1.ecommercemsk.y7xepa.c2.kafka.ap-southeast-1.amazonaws.com:9094,b-2.ecommercemsk.y7xepa.c2.kafka.ap-southeast-1.amazonaws.com:9094,b-3.ecommercemsk.y7xepa.c2.kafka.ap-southeast-1.amazonaws.com:9094"

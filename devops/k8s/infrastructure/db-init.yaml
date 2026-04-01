@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-initializer
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  template:
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        command:
+        - sh
+        - -c
+        - |
+          echo "Đang đợi endpoint và mật khẩu từ ESO..."
+          # Đợi cho đến khi các biến môi trường có giá trị
+          until [ -n "$PGHOST" ] && [ -n "$PGPASSWORD" ]; do
+            echo "Vẫn đang đợi..."
+            sleep 2
+          done
+          
+          echo "Bắt đầu tạo các database logic trên host: $PGHOST"
+          for db in auth_db cart_db delivery_db inventory_db order_db payment_db product_db rating_db; do
+            echo "Đang kiểm tra/tạo database: $db"
+            psql -h $PGHOST -U $PGUSER -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$db'" | grep -q 1 || psql -h $PGHOST -U $PGUSER -d postgres -c "CREATE DATABASE $db"
+          done
+          echo "Hoàn tất khởi tạo databases!"
+        env:
+        - name: PGUSER
+          value: "postgres"
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: auth-db-secret
+              key: PASSWORD
+        - name: PGHOST
+          valueFrom:
+            secretKeyRef:
+              name: auth-db-secret
+              key: ENDPOINT
+      restartPolicy: OnFailure
+  backoffLimit: 4

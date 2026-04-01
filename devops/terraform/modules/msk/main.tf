@@ -42,3 +42,13 @@ variable "private_subnets" {
   description = "List of private subnets"
   type        = list(string)
 }
+
+  output "bootstrap_brokers" {
+  description = "Plaintext connection host:port pairs"
+  value       = aws_msk_cluster.default.bootstrap_brokers
+}
+
+output "bootstrap_brokers_tls" {
+  description = "TLS connection host:port pairs"
+  value       = aws_msk_cluster.default.bootstrap_brokers_tls
+}
