@@ -7,6 +7,7 @@ variable "aws_region" {
 variable "key_name" {
   description = "Name of the SSH key pair"
   type        = string
+  default     = "jenkins-key"
 }
 
 variable "cluster_name" {
@@ -24,7 +25,7 @@ variable "vpc_cidr" {
 variable "azs" {
   description = "Availability Zones"
   type        = list(string)
-  default     = ["us-east-1a", "us-east-1b", "us-east-1c"]
+  default     = ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
 }
 
 variable "instance_types" {
@@ -47,4 +48,25 @@ variable "services" {
     "payment-service",
     "frontend"
   ]
+}
+
+variable "databases" {
+  description = "List of databases"
+  type        = list(string)
+  default     = [
+    "auth-db",
+    "cart-db",
+    "delivery-db",
+    "inventory-db",
+    "order-db",
+    "payment-db",
+    "product-db",
+    "rating-db"
+  ]
+}
+
+variable "infrastructure" {
+  description = "List of infrastructure"
+  type        = list(string)
+  default     = ["kafka", "kafka-connect"]
 }

@@ -8,9 +8,9 @@ import { prisma } from './lib/prisma';
 import { connectConsumer, disconnectConsumer, subscribeToDeliveryOutbox } from './config/kafka';
 import { DeliveryOutboxController } from './controllers/deliveryOutboxController';
 import { DeliveryOutboxConsumer } from './consumers/deliveryOutboxConsumer';
-
+//test
 dotenv.config();
-
+ 
 const app = express();
 const port = process.env.RATING_PORT || 3007;
 
