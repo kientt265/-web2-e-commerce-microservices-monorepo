@@ -18,6 +18,7 @@ async function canConnect() {
   const client = new Client({
     connectionString: DATABASE_URL,
     connectionTimeoutMillis: 3000,
+    ssl: process.env.SSL_MODE === 'require' ? { rejectUnauthorized: false } : false
   });
   try {
     await client.connect();

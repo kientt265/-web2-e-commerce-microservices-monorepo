@@ -31,6 +31,7 @@ pipeline {
                 }
             }
             steps {
+                sh "docker system prune -f || true"
                 withCredentials([
                     [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-creds', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'],
                     [$class: 'UsernamePasswordMultiBinding', credentialsId: 'github-token-cred', usernameVariable: 'DUMMY_USER', passwordVariable: 'GITHUB_TOKEN']

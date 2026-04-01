@@ -37,6 +37,11 @@ spec:
             secretKeyRef:
               name: auth-db-secret
               key: DATABASE_URL
+        - name: SSL_MODE
+          valueFrom:
+            secretKeyRef:
+              name: auth-db-secret
+              key: SSL_MODE
         - name: AUTH_PORT
           value: "3001"
 ---

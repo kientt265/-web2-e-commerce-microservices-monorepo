@@ -1,0 +1,57 @@
+---
+# Ansible playbook để tự động fix External Secrets Operator IRSA
+- name: Fix External Secrets Operator IRSA Configuration
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  
+  vars:
+    namespace: "external-secrets"
+    service_account: "external-secrets"
+    cluster_name: "ecommerce-eks"
+    
+  tasks:
+    - name: Get AWS Account ID
+      command: aws sts get-caller-identity --query Account --output text
+      register: aws_account_id
+      changed_when: false
+      
+    - name: Get IAM role ARN
+      command: aws iam get-role --role-name "{{ cluster_name }}-external-secrets-sa-role" --query 'Role.Arn' --output text
+      register: iam_role_arn
+      changed_when: false
+      
+    - name: Check if service account exists
+      command: kubectl get serviceaccount -n {{ namespace }} {{ service_account }} -o jsonpath='{.metadata.name}'
+      register: sa_exists
+      failed_when: false
+      changed_when: false
+      
+    - name: Add IRSA annotation to service account
+      command: |
+        kubectl annotate serviceaccount -n {{ namespace }} {{ service_account }} \
+          eks.amazonaws.com/role-arn={{ iam_role_arn.stdout }} --overwrite
+      when: sa_exists.rc == 0
+      
+    - name: Get ESO deployment name
+      command: kubectl get deployment -n {{ namespace }} -l app.kubernetes.io/name=external-secrets -o jsonpath='{.items[0].metadata.name}'
+      register: deployment_name
+      changed_when: false
+      
+    - name: Restart ESO deployment
+      command: kubectl rollout restart deployment -n {{ namespace }} {{ deployment_name.stdout }}
+      when: deployment_name.stdout != ""
+      
+    - name: Wait for deployment rollout to complete
+      command: kubectl rollout status deployment -n {{ namespace }} {{ deployment_name.stdout }} --timeout=300s
+      when: deployment_name.stdout != ""
+      
+    - name: Verify service account annotation
+      command: kubectl get serviceaccount -n {{ namespace }} {{ service_account }} -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}'
+      register: annotation_check
+      changed_when: false
+      
+    - name: Display result
+      debug:
+        msg: "IRSA fix completed successfully! Service account now has role: {{ annotation_check.stdout }}"
+      when: annotation_check.stdout != ""

@@ -17,6 +17,36 @@ resource "aws_secretsmanager_secret_version" "rds_password" {
   })
 }
 
+# Create DB parameter group với SSL enabled
+resource "aws_db_parameter_group" "default" {
+  name   = "ecommerce-pg-params"
+  family = "postgres15"
+
+  parameter {
+    name  = "ssl"
+    value = "on"
+  }
+
+  parameter {
+    name  = "rds.force_ssl"
+    value = "0"  # Không force SSL để cho phép cả 2 loại kết nối
+  }
+}
+
+# Request SSL certificate cho RDS
+resource "aws_acm_certificate" "rds" {
+  domain_name       = "${var.cluster_name}-rds.local"
+  validation_method = "DNS"
+
+  subject_alternative_names = [
+    "*.${var.cluster_name}-rds.local"
+  ]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 resource "aws_db_instance" "default" {
   identifier             = "ecommerce-rds"
   engine                 = "postgres"
@@ -28,7 +58,16 @@ resource "aws_db_instance" "default" {
   password               = random_password.password.result
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.default.name
+  parameter_group_name   = aws_db_parameter_group.default.name
   skip_final_snapshot    = true
+  
+  # SSL configuration
+  ca_cert_identifier = "rds-ca-rsa2048-g1"
+  
+  tags = {
+    Name = "ecommerce-rds"
+    SSL  = "enabled"
+  }
 }
 
 resource "aws_db_subnet_group" "default" {
@@ -62,6 +101,11 @@ variable "vpc_id" {
 variable "private_subnets" {
   description = "List of private subnets"
   type        = list(string)
+}
+
+variable "cluster_name" {
+  description = "Name of the EKS cluster"
+  type        = string
 }
 
 output "rds_endpoint" {

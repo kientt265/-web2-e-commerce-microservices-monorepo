@@ -37,6 +37,13 @@ spec:
             secretKeyRef:
               name: payment-db-secret
               key: DATABASE_URL
+        - name: SSL_MODE
+          valueFrom:
+            secretKeyRef:
+              name: payment-db-secret
+              key: SSL_MODE
+        - name: NODE_TLS_REJECT_UNAUTHORIZED
+          value: "0"
         - name: PAYMENT_PORT
           value: "3001"
         - name: KAFKA_BROKER_1

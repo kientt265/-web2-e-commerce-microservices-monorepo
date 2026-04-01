@@ -157,16 +157,20 @@ output "cluster_certificate_authority_data" {
   value = aws_eks_cluster.main.certificate_authority[0].data
 }
 
+output "external_secrets_sa_role_arn" {
+  value = aws_iam_role.external_secrets_sa.arn
+}
+
 data "aws_iam_policy_document" "external_secrets_sa_assume_role_policy" {
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [replace(aws_eks_cluster.main.identity[0].oidc[0].issuer, "https://", "")]
+      identifiers = [aws_iam_openid_connect_provider.eks_oidc_provider.arn]
     }
     condition {
       test     = "StringEquals"
-      variable = "${aws_eks_cluster.main.identity[0].oidc[0].issuer}:sub"
+      variable = "${replace(aws_eks_cluster.main.identity[0].oidc[0].issuer, "https://", "")}:sub"
       values   = ["system:serviceaccount:external-secrets:external-secrets"]
     }
   }
@@ -195,4 +199,17 @@ resource "aws_iam_policy" "external_secrets_sa_policy" {
 resource "aws_iam_role_policy_attachment" "external_secrets_sa_policy_attachment" {
   role       = aws_iam_role.external_secrets_sa.name
   policy_arn = aws_iam_policy.external_secrets_sa_policy.arn
+}
+
+# Create OIDC Provider for IRSA
+resource "aws_iam_openid_connect_provider" "eks_oidc_provider" {
+  url = aws_eks_cluster.main.identity[0].oidc[0].issuer
+
+  client_id_list = [
+    "sts.amazonaws.com",
+  ]
+
+  thumbprint_list = ["4596FF1008E615EADF7C4D92326EA0CC7EC8C50F"]
+
+  depends_on = [aws_eks_cluster.main]
 }

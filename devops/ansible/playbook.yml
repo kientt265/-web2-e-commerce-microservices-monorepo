@@ -6,3 +6,11 @@
     - jenkins
     - tools
     - cloudflare
+
+- name: Fix External Secrets Operator IRSA
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  roles:
+    - external-secrets-fix
+  tags: external-secrets-fix
