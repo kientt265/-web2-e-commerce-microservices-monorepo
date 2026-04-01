@@ -1,28 +1,35 @@
 
+
 resource "random_password" "password" {
+  for_each = toset(var.databases)
   length           = 16
   special          = true
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
 resource "aws_secretsmanager_secret" "rds_password" {
-  name = "rds-password"
+  for_each = toset(var.databases)
+  name = "rds-password-${each.key}"
 }
 
 resource "aws_secretsmanager_secret_version" "rds_password" {
-  secret_id     = aws_secretsmanager_secret.rds_password.id
-  secret_string = random_password.password.result
+  for_each      = toset(var.databases)
+  secret_id     = aws_secretsmanager_secret.rds_password[each.key].id
+  secret_string = random_password.password[each.key].result
 }
 
 resource "aws_db_instance" "default" {
-  identifier           = "ecommerce-rds"
+  for_each = toset(var.databases)
+
+  identifier           = each.key
   engine               = "postgres"
   engine_version       = "15"
   instance_class       = "db.t3.micro"
   allocated_storage    = 20
   storage_type         = "gp2"
   username             = "postgres"
-  password             = random_password.password.result
+  password             = random_password.password[each.key].result
+  db_name              = replace(each.key, "-", "_")
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name = aws_db_subnet_group.default.name
   skip_final_snapshot  = true
@@ -60,3 +67,4 @@ variable "private_subnets" {
   description = "List of private subnets"
   type        = list(string)
 }
+
